@@ -1,0 +1,19 @@
+services:
+  init:
+    image: mattiashem/wordpress-sidekick
+    command: >
+      rm -rf /var/www/html/* &
+      git clone https://github.com/mattiashem/lifeanshell.com.git /var/www/html &
+      chown -R www-data:www-data /var/www/html &
+      tail -f /dev/null
+
+    volumes:
+      - ./running:/var/www/html
+  webb:
+    image: nginx:alpine
+    depends_on: 
+      - init
+    volumes:
+      - ./running:/usr/share/nginx/html
+    ports:
+      - "8088:80"
