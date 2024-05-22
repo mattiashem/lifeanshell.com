@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+    <link rel="icon" href="img/favicon.ico" type="image/png">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="description" content="Spent most of my days with a shell, deploys apps, writing code ore fixing problems with automating, This is some of the stuff a work on right now " />
+        <meta name="keywords" content="kubernernetes samma.io sre linux docker devops ks8 help blog fix problems" />
+        <meta property="og:title" content="Lifeandshell - Mattias Hemmingsson" />
+        <meta property="og:type" content="devsecops devops sre drones hacking" />
+        <meta property="og:url" content="https://lifeadnshell.com" />
+        <meta property="og:description" content="Lifeandshell - Mattias Hemmingsson - SRE Devops - And more " />
+
+    <title>Mattias Hemmingsson {'rendered': 'Device Tracker using Dhpcd server and bash'} </title>
+    <!-- font icons -->
+    <link rel="stylesheet" href="/assets/vendors/themify-icons/css/themify-icons.css">
+    <!-- Bootstrap + Steller main styles -->
+	<link rel="stylesheet" href="/assets/css/steller.css">
+</head>
+<body data-spy="scroll" data-target=".navbar" data-offset="40" id="home">
+
+    <!-- Page navigation -->
+    <nav class="navbar navbar-expand-lg navbar-light fixed-top" data-spy="affix" data-offset-top="0">
+        <div class="container">
+            <a class="navbar-brand" href="#"><img src="/img/hrb.png" alt=""></a>
+            <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                <ul class="navbar-nav ml-auto align-items-center">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/blog">Blog</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Contact</a>
+                    </li>
+                </ul>
+            </div>
+        </div>          
+    </nav>
+    <!-- End of page navibation -->
+    <!-- Blog Section -->
+    <section id="blog" class="section">
+        <div class="container text-center">
+            <h6 class="subtitle"></h6>
+            <p class="mb-5 pb-4"></p>
+
+            <div class="row text-left">
+
+    <h2>{'rendered': 'Device Tracker using Dhpcd server and bash'}</h2>
+    <p>{'rendered': '\n<p>I have used Home Assistance for some time. And have always used the device tracker to set different actions based if I&#8217;m home or not.<br>But when my pfsense died and a install a clean Linux box as my fw and DHCP server I lost all my tracking for devices.</p>\n\n\n\n<p>But I did found out that the dhcpd server can run a command every time it hands out a dhcpds leese. And HA has a great API that you can use !<br><br>So with this a setup some small bash script in not more then 10 lines that connects and add my devices to HA<br></p>\n\n\n\n<h2 class="wp-block-heading"><br>1. Set mac to state Home !</h2>\n\n\n\n<p>Let&#8217;s get our dhpcd server to run a bash script. The script gets the mac and sets the state in HA for the mac to home. It also saves the mac in a file in a folder that we will use later</p>\n\n\n\n<p><code>on commit {<br></code>set ClientIP = binary-to-ascii(10, 8, &#8220;.&#8221;, leased-address);<br>set ClientMac = binary-to-ascii(16, 8, &#8220;:&#8221;, substring(hardware, 1, 6));<br>set ClientHost = pick-first-value (option fqdn.hostname, option host-name, &#8220;&#8221;);<br>log(concat(&#8220;Commit: IP: &#8220;, ClientIP, &#8221; Mac: &#8220;, ClientMac));<br>execute(&#8220;/etc/dhcp/ha-precense.sh&#8221;, &#8220;commit&#8221;, ClientIP, ClientMac, ClientHost);</p>\n\n\n\n<p><code>}</code></p>\n\n\n\n<p><br>Add this into your dhcpd config. It is called the script ha-precense.se, and below is that script.</p>\n\n\n\n<pre class="wp-block-code"><code>#!/bin/bash\n#\n#\n# script that add devices to ha \nNAME=$1\nIP=$2\nMAC=$3\nHOSTNAME=$4\nMACNAME=$(echo "$MAC" | sed "s/:/_/g")\nTOKEN=\necho "Adding the foollowing name to Home Assitance $NAME $IP $MAC $HOSTNAME"\nif &#91; -z "$var" ]\nthen\n      echo "Adding the foollowing name to Home Assitance $NAME $IP $MAC $HOSTNAME" > /var/log/ha-devices/$MAC\n      curl -X POST -H "Authorization: Bearer $TOKEN" \\\n         -H "Content-Type: application/json" \\\n         -d \'{"state": "home" }\' \\\n        http:&#47;&#47;localhost:8123/api/states/device_tracker.$MACNAME\nelse\n      echo "Adding the foollowing name to Home Assitance $NAME $IP $MAC $HOSTNAME" > /var/log/ha-devices/$HOSTNAME\n      curl -X POST -H "Authorization: Bearer $TOKEN" \\\n         -H "Content-Type: application/json" \\\n         -d \'{"state": "home" }\' \\\n        http://localhost:8123/api/states/device_tracker.$HOSTNAME\n\nfi\n</code></pre>\n\n\n\n<p>Add your token that you will get from home assistance.<br>And change the localhost, so it points to your home assistance </p>\n\n\n\n<h2 class="wp-block-heading">2. Set the to not_home</h2>\n\n\n\n<p>Now we have a lot of mac that are in state Home bu for our device tracker to work we also need to have them in state not_home.<br>For that, we use the files we created before. We look at the files that are more then 1h old. If there are more then set the state for that mac to not_home. And remove the file.</p>\n\n\n\n<pre class="wp-block-code"><code>#!/bin/bash\n#\n# Detect old leease and set them as nothome in HA\n#\nDEVICES=$(find /var/log/ha-devices/ -type f -mmin +60)\nTOKEN=\n\nfor i in $DEVICES;\n do\n    MAC=$(echo $i | awk -F/ \'{print $NF}\')\n    MACNAME=$(echo "$MAC" | sed "s/:/_/g")\n    echo "Setting $MAC to not home"\n    curl -X POST -H "Authorization: Bearer $TOKEN" \\\n  \t\t-H "Content-Type: application/json" \\\n  \t\t-d \'{"state": "not_home" }\' \\\n  \t\t\thttp:&#47;&#47;localhost:8123/api/states/device_tracker.$MACNAME\n    rm $i\n\n\ndone\n</code></pre>\n\n\n\n<p>Same here as before add you own token and change the localhost address to match your setup.<br>I have setup a crontab to run this every 5 min.<br><br></p>\n\n\n\n<h2 class="wp-block-heading">More fix</h2>\n\n\n\n<p>So the tracker now should be fast when a device arrives to the network and get a IP. Then the state in HA will change at once.<br>But setting the state to away may be slower  depending on some things that you can configure as you want<br>&#8211; dhcpd leease time is how often a client will request for a new IP. </p>\n\n\n\n<p>&#8211; In the remove script when you find files older then. its good to match this with the leease time </p>\n\n\n\n<p>&#8211; How often you run the remove script in crontab. </p>\n\n\n\n<p>For me don&#8217;t care if it quick so I have those set to 60min and clean every 5 min for now.<br></p>\n', 'protected': False}</p>
+
+            </div>
+        </div>
+    </section>
+
+
+    <!-- Page Footer -->
+    <footer class="page-footer">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-sm-6">
+                    <p>Copyright <script>document.write(new Date().getFullYear())</script> &copy; <a href="http://hacking.robots.beer" target="_blank">Mattias Hemmingsson / h.r.b AB </a></p>
+                </div>
+                <div class="col-sm-6">
+                    <div class="socials">
+                        <a class="social-item" href="javascript:void(0)"><i class="ti-github"></i></a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </footer> 
+    <!-- End of page footer -->
+	
+	<!-- core  -->
+    <script src="/assets/vendors/jquery/jquery-3.4.1.js"></script>
+    <script src="/assets/vendors/bootstrap/bootstrap.bundle.js"></script>
+    <!-- bootstrap 3 affix -->
+	<script src="/assets/vendors/bootstrap/bootstrap.affix.js"></script>
+
+    <!-- steller js -->
+    <script src="/assets/js/steller.js"></script>
+
+</body>
+</html>

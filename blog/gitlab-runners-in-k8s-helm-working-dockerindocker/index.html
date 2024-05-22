@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+    <link rel="icon" href="img/favicon.ico" type="image/png">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="description" content="Spent most of my days with a shell, deploys apps, writing code ore fixing problems with automating, This is some of the stuff a work on right now " />
+        <meta name="keywords" content="kubernernetes samma.io sre linux docker devops ks8 help blog fix problems" />
+        <meta property="og:title" content="Lifeandshell - Mattias Hemmingsson" />
+        <meta property="og:type" content="devsecops devops sre drones hacking" />
+        <meta property="og:url" content="https://lifeadnshell.com" />
+        <meta property="og:description" content="Lifeandshell - Mattias Hemmingsson - SRE Devops - And more " />
+
+    <title>Mattias Hemmingsson {'rendered': 'Gitlab runners in K8s Helm (Working DockerInDocker)'} </title>
+    <!-- font icons -->
+    <link rel="stylesheet" href="/assets/vendors/themify-icons/css/themify-icons.css">
+    <!-- Bootstrap + Steller main styles -->
+	<link rel="stylesheet" href="/assets/css/steller.css">
+</head>
+<body data-spy="scroll" data-target=".navbar" data-offset="40" id="home">
+
+    <!-- Page navigation -->
+    <nav class="navbar navbar-expand-lg navbar-light fixed-top" data-spy="affix" data-offset-top="0">
+        <div class="container">
+            <a class="navbar-brand" href="#"><img src="/img/hrb.png" alt=""></a>
+            <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                <ul class="navbar-nav ml-auto align-items-center">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/blog">Blog</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Contact</a>
+                    </li>
+                </ul>
+            </div>
+        </div>          
+    </nav>
+    <!-- End of page navibation -->
+    <!-- Blog Section -->
+    <section id="blog" class="section">
+        <div class="container text-center">
+            <h6 class="subtitle"></h6>
+            <p class="mb-5 pb-4"></p>
+
+            <div class="row text-left">
+
+    <h2>{'rendered': 'Gitlab runners in K8s Helm (Working DockerInDocker)'}</h2>
+    <p>{'rendered': '\n<p id="block-813bada9-6b23-4850-b652-97b1be6d04bd">So&#8230; I spent alot of time trying to get gitlab runners working in kubernetes. using the helm from gitlab.<br>This is the setup i use now that works for me aand that you dont need to put to mutch inte the build job.<br><br>Replace so you have your domain and key</p>\n\n\n\n<p id="block-0f41831b-8681-4547-8d7a-0ab8885a9259">name the file runners1-values.yaml</p>\n\n\n\n<pre id="block-9711e90c-47e7-4e46-9241-9e56107a54dc" class="wp-block-code"><code>## The GitLab Server URL (with protocol) that want to register the runner against<br>## ref: https://docs.gitlab.com/runner/commands/README.html#gitlab-runner-register<br>##<br>gitlabUrl: https://    .booli.se/<br>name: "K8s INT"<br>## The registration token for adding new Runners to the GitLab server. This must<br>## be retrieved from your GitLab instance.<br>## ref: https://docs.gitlab.com/ee/ci/runners/<br>##<br>runnerRegistrationToken: ""<br><br>## Set the certsSecretName in order to pass custom certificates for GitLab Runner to use<br>## Provide resource name for a Kubernetes Secret Object in the same namespace,<br>## this is used to populate the /etc/gitlab-runner/certs directory<br>## ref: https://docs.gitlab.com/runner/configuration/tls-self-signed.html#supported-options-for-self-signed-certificates<br>##<br>#certsSecretName:<br><br>## Configure the maximum number of concurrent jobs<br>## ref: https://docs.gitlab.com/runner/configuration/advanced-configuration.html#the-global-section<br>##<br>concurrent: 10<br><br>## Defines in seconds how often to check GitLab for a new builds<br>## ref: https://docs.gitlab.com/runner/configuration/advanced-configuration.html#the-global-section<br>##<br>checkInterval: 2<br><br>## For RBAC support:<br>rbac:<br><br>  ## Run the gitlab-bastion container with the ability to deploy/manage containers of jobs<br>  ## cluster-wide or only within namespace<br>  clusterWideAccess: false<br><br>  ## If RBAC is disabled in this Helm chart, use the following Kubernetes Service Account name.<br>  ##<br>  serviceAccountName: gitlab-runner-admin<br><br>## Configuration for the Pods that the runner launches for each new job<br>##<br>metrics:<br>  enabled: true<br><br>runners:<br>  ## Default container image to use for builds when none is specified<br>  ##<br>  image: docker:19.03.13<br>  config: |<br>    &#91;&#91;runners]]<br>      environment = &#91;"DOCKER_HOST=tcp://docker:2376", "DOCKER_TLS_CERTDIR=/certs", "DOCKER_TLS_VERIFY=1", "DOCKER_CERT_PATH=/certs/client"]<br>      &#91;runners.kubernetes]<br>        image = "docker:19.03.13"<br>        privileged = true<br>        cpu_request = "100m"<br>        memory_request = "128Mi"<br>        helper_cpu_request = "200m"<br>        &#91;runners.kubernetes.node_selector]<br>           gitlab = "true"<br>        &#91;&#91;runners.kubernetes.volumes.empty_dir]]<br>          name = "docker-certs"<br>          mount_path = "/certs/client"<br>          medium = "Memory"<br><br><br><br><br><br>  ## Run all containers with the privileged flag enabled<br>  ## This will allow the docker:stable-dind image to run if you need to run Docker<br>  ## commands. Please read the docs before turning this on:<br>  ## ref: https://docs.gitlab.com/runner/executors/kubernetes.html#using-docker-dind<br>  ##<br>  tags: "int,k8s,dind"<br>  ## Namespace to run Kubernetes jobs in (defaults to \'default\')<br>  ##<br>  namespace: gitlab<br>  nodeSelector:<br>    gitlab: true<br>  ## Build Container specific configuration<br>  ##<br>  kubernetes:<br>    node_selector:<br>      gitlab = "true"<br>  builds:<br>    cpuLimit: 2000m<br>    memoryLimit: 2048Mi<br>    cpuRequests: 100m<br>    memoryRequests: 128Mi<br>    node_selector: gitlab=true<br>  ## Service Container specific configuration<br>  ##<br>  services:<br>    # cpuLimit: 200m<br>    # memoryLimit: 256Mi<br>    cpuRequests: 100m<br>    memoryRequests: 128Mi<br><br>  ## Helper Container specific configuration<br>  ##<br>  helpers:<br>    # cpuLimit: 200m<br>    # memoryLimit: 256Mi<br>    cpuRequests: 100m<br>    memoryRequests: 128Mi<br>    node_selector: gitlab=true<br>\ufeff</code></pre>\n\n\n\n<p id="block-bd3ddfe3-4833-4a5f-98bb-b5eb3a2100ae">Apply it with</p>\n\n\n\n<pre id="block-12b4354f-02f6-4626-8f5d-258e4c5ccf58" class="wp-block-code"><code>#!/bin/bash<br>helm repo add gitlab https://charts.gitlab.io<br>helm repo update<br><br>kubectl create namespace gitlab<br>kubectl apply -f gitlab-service-account.yaml <br><br>helm upgrade --install --namespace gitlab gitlab-runner -f runners1-values.yaml gitlab/gitlab-runner<br>\ufeff</code></pre>\n\n\n\n<p id="block-6e4ec73e-1a52-497d-a938-23d3169c621d">And now you have it wokring fine in the cluster</p>\n\n\n\n<p></p>\n', 'protected': False}</p>
+
+            </div>
+        </div>
+    </section>
+
+
+    <!-- Page Footer -->
+    <footer class="page-footer">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-sm-6">
+                    <p>Copyright <script>document.write(new Date().getFullYear())</script> &copy; <a href="http://hacking.robots.beer" target="_blank">Mattias Hemmingsson / h.r.b AB </a></p>
+                </div>
+                <div class="col-sm-6">
+                    <div class="socials">
+                        <a class="social-item" href="javascript:void(0)"><i class="ti-github"></i></a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </footer> 
+    <!-- End of page footer -->
+	
+	<!-- core  -->
+    <script src="/assets/vendors/jquery/jquery-3.4.1.js"></script>
+    <script src="/assets/vendors/bootstrap/bootstrap.bundle.js"></script>
+    <!-- bootstrap 3 affix -->
+	<script src="/assets/vendors/bootstrap/bootstrap.affix.js"></script>
+
+    <!-- steller js -->
+    <script src="/assets/js/steller.js"></script>
+
+</body>
+</html>
