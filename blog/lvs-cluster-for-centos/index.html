@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+    <link rel="icon" href="img/favicon.ico" type="image/png">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="description" content="Spent most of my days with a shell, deploys apps, writing code ore fixing problems with automating, This is some of the stuff a work on right now " />
+        <meta name="keywords" content="kubernernetes samma.io sre linux docker devops ks8 help blog fix problems" />
+        <meta property="og:title" content="Lifeandshell - Mattias Hemmingsson" />
+        <meta property="og:type" content="devsecops devops sre drones hacking" />
+        <meta property="og:url" content="https://lifeadnshell.com" />
+        <meta property="og:description" content="Lifeandshell - Mattias Hemmingsson - SRE Devops - And more " />
+
+    <title>Mattias Hemmingsson {'rendered': 'LVS cluster for Centos'} </title>
+    <!-- font icons -->
+    <link rel="stylesheet" href="/assets/vendors/themify-icons/css/themify-icons.css">
+    <!-- Bootstrap + Steller main styles -->
+	<link rel="stylesheet" href="/assets/css/steller.css">
+
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-3SYH00HY9X"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-3SYH00HY9X');
+</script>
+
+</head>
+<body data-spy="scroll" data-target=".navbar" data-offset="40" id="home">
+
+    <!-- Page navigation -->
+    <nav class="navbar navbar-expand-lg navbar-light fixed-top" data-spy="affix" data-offset-top="0">
+        <div class="container">
+            <a class="navbar-brand" href="#"><img src="/img/hrb.png" alt=""></a>
+            <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                <ul class="navbar-nav ml-auto align-items-center">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/blog">Blog</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Contact</a>
+                    </li>
+                </ul>
+            </div>
+        </div>          
+    </nav>
+    <!-- End of page navibation -->
+    <!-- Blog Section -->
+    <section id="blog" class="section">
+        <div class="container text-center">
+            <h6 class="subtitle"></h6>
+            <p class="mb-5 pb-4"></p>
+
+            <div class="row text-left">
+
+    <h2>LVS cluster for Centos</h2>
+    <p><p>An other cluster solution for Linux is LVS. I im testing to use LVS cluster for some cloud server. My cloudserver has one external ip and i want all traffic to come to that ip and after that be redirected to my web nodes. Witch LVS i will redirect all traffic to that ip and load balance it between my nodes. When i set up HAProxy i only loadbalanse webb traffic. In this guide i load balanse my ssh server between my two web nodes. (I already have Haproxy load balance my web)</p>
+<p>So install the directory witch will receive and spreed the traffic.</p>
+<p># modprobe ip_vs<br />
+# cat /proc/net/ip_vs<br />
+IP Virtual Server version 1.2.1 (size=4096)<br />
+Prot LocalAddress:Port Scheduler Flags<br />
+-&gt; RemoteAddress:Port Forward Weghit ActiveConn InActConn</p>
+<p>&nbsp;</p>
+<p>Install ipvsadm tool</p>
+<pre>yum install ipvsadm</pre>
+<p>I have an eth alias called 192.168.44.20 and will use that to receive all my incoming traffic. Then i will have two nodes behind my directory that will do the work 192.168.44.21 and 192.168.44.22. (192.168.44.20 is my heartbeat ip and will go to my secondary server for HA)</p>
+<p>Enable packet forwarding<br />
+# echo 1 &gt; /proc/sys/net/ipv4/ip_forward</p>
+<p>Set up the director for round robin traffic</p>
+<pre>/sbin/ipvsadm -C
+/sbin/ipvsadm -A -t 192.168.44.20:22 -s rr
+/sbin/ipvsadm -a -t 192.168.44.20:22 -r 192.168.44.21 -g
+/sbin/ipvsadm -a -t 192.168.44.20:22 -r 192.168.44.22 -g</pre>
+<p>You can change the -g against -m -w 1</p>
+<p>-m Using NAT load balancing -w 1 is the wight of the server<br />
+-r is for direct load balancing</p>
+<p>read more here <a href="http://www.centos.org/docs/5/html/Virtual_Server_Administration/s2-lvs-nat-VSA.html">http://www.centos.org/docs/5/html/Virtual_Server_Administration/s2-lvs-nat-VSA.html</a></p>
+<p>&nbsp;</p>
+<p>The -rr tels witch type of load balasing you want to use</p>
+<ul>
+<li><b>Round Robin (RR)</b>: New incoming connections are assigned to each realserver in turn.</li>
+<li><b>Weighted Round Robin (WRR)</b>: RR scheduling with additional weighting factor to compensate for differences in realserver capabilities such as additional CPUs, more memory, and so on.</li>
+<li><b>Least Connected (LC)</b>: New connections go to the realserver with the least number of connections. This is not necessarily the least-busy realserver, but it is a step in that direction.</li>
+<li><b>Weighted Least Connection</b> (WLC): LC with weighting.</li>
+</ul>
+<p>List the config</p>
+<pre>/sbin/ipvsadm -Ln
+IP Virtual Server version 1.2.1 (size=4096)
+Prot LocalAddress:Port Scheduler Flags
+ -&gt; RemoteAddress:Port Forward Weight ActiveConn InActConn
+TCP 192.168.44.20:81 rr
+ -&gt; 192.168.44.21:81 Local 1 0 0 
+ -&gt; 192.168.44.22:81 Route 1 0 0</pre>
+<p>Now the director is done and its time to fix the real server (my direktor and realserver are the same )</p>
+<h3>The Realservers</h3>
+<p>start by altering some network settings .</p>
+<p>Add this at the bottom of the file /etc/sysctl.conf</p>
+<pre>net.ipv4.conf.lo.arp_ignore = 1
+net.ipv4.conf.lo.arp_announce = 2
+net.ipv4.conf.all.arp_ignore = 1
+net.ipv4.conf.all.arp_announce = 2</pre>
+<p>Reload the settings</p>
+<pre>sysctl -p</pre>
+<p>DONE</p>
+<p>I have both my real server and directory on the same server so this is now working for me. I can now ssh to my 192.168.44.20 ip and get round robin between the servers.<br />
+If you planning on using more servers ore NAT then you want to setup route rules.<br />
+See links for more info.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><a href="http://www.linuxvirtualserver.org/Documents.html">http://www.linuxvirtualserver.org/Documents.html</a><br />
+<a href="http://www.ibm.com/developerworks/linux/library/l-linux-ha/index.html">http://www.ibm.com/developerworks/linux/library/l-linux-ha/index.html</a><br />
+<a href="http://kezhong.wordpress.com/2010/02/28/implementing-load-balance-on-centos-5-4/">http://kezhong.wordpress.com/2010/02/28/implementing-load-balance-on-centos-5-4/</a></p>
+</p>
+
+            </div>
+        </div>
+    </section>
+
+
+    <!-- Page Footer -->
+    <footer class="page-footer">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-sm-6">
+                    <p>Copyright <script>document.write(new Date().getFullYear())</script> &copy; <a href="http://hacking.robots.beer" target="_blank">Mattias Hemmingsson / h.r.b AB </a></p>
+                </div>
+                <div class="col-sm-6">
+                    <div class="socials">
+                        <a class="social-item" href="javascript:void(0)"><i class="ti-github"></i></a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </footer> 
+    <!-- End of page footer -->
+	
+	<!-- core  -->
+    <script src="/assets/vendors/jquery/jquery-3.4.1.js"></script>
+    <script src="/assets/vendors/bootstrap/bootstrap.bundle.js"></script>
+    <!-- bootstrap 3 affix -->
+	<script src="/assets/vendors/bootstrap/bootstrap.affix.js"></script>
+
+    <!-- steller js -->
+    <script src="/assets/js/steller.js"></script>
+
+</body>
+</html>

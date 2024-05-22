@@ -16,6 +16,17 @@
     <link rel="stylesheet" href="/assets/vendors/themify-icons/css/themify-icons.css">
     <!-- Bootstrap + Steller main styles -->
 	<link rel="stylesheet" href="/assets/css/steller.css">
+
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-3SYH00HY9X"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-3SYH00HY9X');
+</script>
+
 </head>
 <body data-spy="scroll" data-target=".navbar" data-offset="40" id="home">
 
@@ -51,8 +62,881 @@
 
             <div class="row text-left">
 
-    <h2>{'rendered': 'Migrate Elasticsearch helm to Elasticsearch Operator'}</h2>
-    <p>{'rendered': '\n<p>Migrate elasticsearch helm to elasticsearch operator and from version 7 to version 8.<br>So in the start, I used the helm chart for elasticsearch, and everything worked fine. Then elasticsearch 8 comes and the Elasticsearch operator.<br>This broke by helm chart and kind of left me in a stalled state.<br>But now I have to migrate my current elasticsearch that uses a helm chart to start using the operator.<br><br>The migration is done in steps </p>\n\n\n\n<p>1. Deploy the elasticsearch operator and create a small cluster. Mine is only one master and one data node.<br>We set the new cluster to init against my current elasticsearch master, and we disable the TLS checks.<br>some nodes are that the version is low I need to upgrade the data, And a also used PSP in the cluster, so added the SecurityContext. You may delete them.<br></p>\n\n\n\n<p></p>\n\n\n\n<pre class="wp-block-code"><code>\napiVersion: elasticsearch.k8s.elastic.co/v1\nkind: Elasticsearch\nmetadata:\n  name: elasticsearch\nspec:\n  version: 8.1.3\n  http:\n    tls:\n      selfSignedCertificate:\n        disabled: true\n  nodeSets:\n  - name: data\n    count: 1\n    podTemplate:\n      spec:\n        securityContext:\n          runAsUser: 1000 \n          fsGroup: 1000\n    volumeClaimTemplates:\n    - metadata:\n        name: elasticsearch-data # Do not change this name unless you set up a volume mount for the data path.\n      spec:\n        accessModes:\n        - ReadWriteOnce\n        resources:\n          requests:\n            storage: 300Gi\n        storageClassName: openebs-lvmpv-late\n    #env:\n    #  - name: cluster.initial_master_nodes\n    #    value: elasticsearch-master-0,elasticsearch-master-1,elasticsearch-master-2,\n    #  - name: discovery.seed_hosts                                  \n    #    value:  elasticsearch-master-headless\n    #  - name: xpack.security.enabled                                \n    #    value: false\n    #  - name: xpack.security.transport.ssl.enabled\n    #    value: false\n    #  - name: xpack.security.http.ssl.enabled\n    #    value: false\n\n    config:\n      node.store.allow_mmap: false\n      node.roles: &#91;"data","ingest","transform","data_hot","data_warm","data_content"]\n      xpack.ml.enabled: true\n      xpack.security:\n        transport:\n          ssl:\n            verification_mode: none\n        authc:\n          anonymous:\n            username: anonymous\n            roles: superuser\n            authz_exception: false\n      discovery.seed_hosts:\n         - elasticsearch-master-headless\n      cluster.initial_master_nodes: \n         - elasticsearch-master-0\n         - elasticsearch-master-1\n         - elasticsearch-master-2\n      #node.remote_cluster_client: false\n  - name: master\n    config:\n    count: 1\n    podTemplate:\n      spec:\n        securityContext:\n          runAsUser: 1000 \n          fsGroup: 1000\n    volumeClaimTemplates:\n    - metadata:\n        name: elasticsearch-data # Do not change this name unless you set up a volume mount for the data path.\n      spec:\n        accessModes:\n        - ReadWriteOnce\n        resources:\n          requests:\n            storage: 30Gi\n        storageClassName: openebs-lvmpv-late\n    #env:\n    #  - name: cluster.initial_master_nodes\n    #    value: elasticsearch-master-0,elasticsearch-master-1,elasticsearch-master-2,\n    #  - name: discovery.seed_hosts                                  \n    #    value:  elasticsearch-master-headless\n    #  - name: xpack.security.enabled                                \n    #    value: false\n    #  - name: xpack.security.transport.ssl.enabled\n    #    value: false\n    #  - name: xpack.security.http.ssl.enabled\n    #    value: false\n    config:\n      node.store.allow_mmap: false\n      node.roles: &#91;"master"]\n      xpack.security:\n        transport:\n          ssl:\n            verification_mode: none\n        authc:\n          anonymous:\n            username: anonymous\n            roles: superuser\n            authz_exception: false\n      discovery.seed_hosts:\n         - elasticsearch-master-headless\n      cluster.initial_master_nodes: \n         - elasticsearch-master-0\n         - elasticsearch-master-1\n         - elasticsearch-master-2\n---\n#apiVersion: kibana.k8s.elastic.co/v1\n#kind: Kibana\n#metadata:\n#  name: quickstart\n#spec:\n#  version: 8.1.3\n#  count: 1\n#  elasticsearchRef:\n#    name: elasticsearch\n</code></pre>\n\n\n\n<p>So we deploy the cluster but its only so we can use the TLS certs that are created and the users.<br>So as soon as the pods start we are to stop them<br><br>First, stop the elasticsearch-operator else it will try to restart the statefulset.</p>\n\n\n\n<pre class="wp-block-code"><code>kubectl edit statefulset elastic-operator -n elastic-system</code></pre>\n\n\n\n<p>Change the replicas to 0 and save.<br>Do the same to the new elasticsearch statefulset also.<br></p>\n\n\n\n<pre class="wp-block-code"><code>kubectl edit statefulset elasticsearch-es-data -n elastic<br>kubectl edit statefulset elasticsearch-es-master -n elastic</code></pre>\n\n\n\n<p>Now lets patch our current elasticsearch statefulset. I have two one for my datanodes and one for my master.<br>Lets stop the current elasticsearch nodes as well by setting the repl in statefulset to 0 for them as well</p>\n\n\n\n<pre class="wp-block-code"><code>kubectl edit statefulset elasticsearch-data -n elastic \nkubectl edit statefulset elasticsearch-master -n elastic</code></pre>\n\n\n\n<p>Now we can apply our new statefulset config for our master.<br></p>\n\n\n\n<pre class="wp-block-code"><code>\napiVersion: apps/v1\nkind: StatefulSet\nmetadata:\n  annotations:\n    esMajorVersion: "8"\n    meta.helm.sh/release-name: elasticsearch\n    meta.helm.sh/release-namespace: elastic\n  generation: 106\n  labels:\n    app: elasticsearch-master\n    app.kubernetes.io/managed-by: Helm\n    chart: elasticsearch\n    heritage: Helm\n    release: elasticsearch\n  name: elasticsearch-master\n  namespace: elastic\nspec:\n  podManagementPolicy: Parallel\n  replicas: 0\n  selector:\n    matchLabels:\n      app: elasticsearch-master\n  serviceName: elasticsearch-master-headless\n  template:\n    metadata:\n      labels:\n        app: elasticsearch-master\n        chart: elasticsearch\n        release: elasticsearch\n      name: elasticsearch-master\n    spec:\n      affinity:\n        podAntiAffinity:\n          requiredDuringSchedulingIgnoredDuringExecution:\n          - labelSelector:\n              matchExpressions:\n              - key: app\n                operator: In\n                values:\n                - elasticsearch-master\n            topologyKey: kubernetes.io/hostname\n      automountServiceAccountToken: true\n      containers:\n      - env:\n        - name: node.name\n          valueFrom:\n            fieldRef:\n              apiVersion: v1\n              fieldPath: metadata.name\n        - name: cluster.initial_master_nodes\n          value: elasticsearch-master-0,elasticsearch-master-1,elasticsearch-master-2,\n        - name: node.roles\n          value: master\n        - name: discovery.seed_hosts\n          value: elasticsearch-master-headless\n        - name: cluster.name\n          value: elasticsearch\n        - name: network.host\n          value: 0.0.0.0\n        - name: ELASTIC_PASSWORD\n          valueFrom:\n            secretKeyRef:\n              key: elastic-internal\n              name: elasticsearch-es-internal-users\n        - name: ES_JAVA_OPTS\n          value: -Xmx5g -Xms5g\n        - name: xpack.security.enabled\n          value: "true"\n        - name: xpack.security.transport.ssl.enabled\n          value: "true"\n        - name: xpack.security.http.ssl.enabled\n          value: "false"\n        - name: xpack.security.transport.ssl.verification_mode\n          value: none\n        - name: xpack.security.transport.ssl.key\n          value: /usr/share/elasticsearch/config/certs/elasticsearch-es-master-0.tls.key\n        - name: xpack.security.transport.ssl.certificate\n          value: /usr/share/elasticsearch/config/certs/elasticsearch-es-master-0.tls.crt\n        - name: xpack.security.transport.ssl.certificate_authorities\n          value: /usr/share/elasticsearch/config/certs/ca.crt\n        - name: xpack.security.http.ssl.key\n          value: /usr/share/elasticsearch/config/certs/elasticsearch-es-master-0.tls.key\n        - name: xpack.security.http.ssl.certificate\n          value: /usr/share/elasticsearch/config/certs/elasticsearch-es-master-0.tls.crt\n        - name: xpack.security.http.ssl.certificate_authorities\n          value: /usr/share/elasticsearch/config/certs/ca.crt\n        image: docker.elastic.co/elasticsearch/elasticsearch:8.1.3\n        imagePullPolicy: IfNotPresent\n        name: elasticsearch\n        ports:\n        - containerPort: 9200\n          name: http\n          protocol: TCP\n        - containerPort: 9300\n          name: transport\n          protocol: TCP\n        readinessProbe:\n          exec:\n            command:\n            - bash\n            - -c\n            - |\n              set -e\n\n              # Exit if ELASTIC_PASSWORD in unset\n              if &#91; -z "${ELASTIC_PASSWORD}" ]; then\n                echo "ELASTIC_PASSWORD variable is missing, exiting"\n                exit 1\n              fi\n\n              # If the node is starting up wait for the cluster to be ready (request params: "wait_for_status=green&amp;timeout=1s" )\n              # Once it has started only check that the node itself is responding\n              START_FILE=/tmp/.es_start_file\n\n              # Disable nss cache to avoid filling dentry cache when calling curl\n              # This is required with Elasticsearch Docker using nss &lt; 3.52\n              export NSS_SDB_USE_CACHE=no\n\n              http () {\n                local path="${1}"\n                local args="${2}"\n                set -- -XGET -s\n\n                if &#91; "$args" != "" ]; then\n                  set -- "$@" $args\n                fi\n\n                set -- "$@" -u "elastic:${ELASTIC_PASSWORD}"\n\n                curl --output /dev/null -k "$@" "https://127.0.0.1:9200${path}"\n              }\n\n              if &#91; -f "${START_FILE}" ]; then\n                echo \'Elasticsearch is already running, lets check the node is healthy\'\n                HTTP_CODE=$(http "/" "-w %{http_code}")\n                RC=$?\n                if &#91;&#91; ${RC} -ne 0 ]]; then\n                  echo "curl --output /dev/null -k -XGET -s -w \'%{http_code}\' \\${BASIC_AUTH} https://127.0.0.1:9200/ failed with RC ${RC}"\n                  exit ${RC}\n                fi\n                # ready if HTTP code 200, 503 is tolerable if ES version is 6.x\n                if &#91;&#91; ${HTTP_CODE} == "200" ]]; then\n                  exit 0\n                elif &#91;&#91; ${HTTP_CODE} == "503" &amp;&amp; "8" == "6" ]]; then\n                  exit 0\n                else\n                  echo "curl --output /dev/null -k -XGET -s -w \'%{http_code}\' \\${BASIC_AUTH} https://127.0.0.1:9200/ failed with HTTP code ${HTTP_CODE}"\n                  exit 1\n                fi\n\n              else\n                echo \'Waiting for elasticsearch cluster to become ready (request params: "wait_for_status=green&amp;timeout=1s" )\'\n                if http "/_cluster/health?wait_for_status=green&amp;timeout=1s" "--fail" ; then\n                  touch ${START_FILE}\n                  exit 0\n                else\n                  echo \'Cluster is not yet ready (request params: "wait_for_status=green&amp;timeout=1s" )\'\n                  exit 1\n                fi\n              fi\n          failureThreshold: 3\n          initialDelaySeconds: 600\n          periodSeconds: 10\n          successThreshold: 3\n          timeoutSeconds: 5\n        resources:\n          limits:\n            cpu: "3"\n            memory: 7Gi\n          requests:\n            cpu: 500m\n            memory: 3Gi\n        securityContext:\n          capabilities:\n            drop:\n            - ALL\n          runAsNonRoot: true\n          runAsUser: 1000\n        terminationMessagePath: /dev/termination-log\n        terminationMessagePolicy: File\n        volumeMounts:\n        - mountPath: /usr/share/elasticsearch/data\n          name: elasticsearch-master\n        - mountPath: /usr/share/elasticsearch/config/certs\n          name: elastic-internal-transport-certificates\n          readOnly: true\n        - mountPath: /usr/share/elasticsearch/config/elasticsearch.yml\n          name: esconfig\n          subPath: elasticsearch.yml\n      dnsPolicy: ClusterFirst\n      enableServiceLinks: true\n      initContainers:\n      - command:\n        - sysctl\n        - -w\n        - vm.max_map_count=262144\n        image: docker.elastic.co/elasticsearch/elasticsearch:8.1.0\n        imagePullPolicy: IfNotPresent\n        name: configure-sysctl\n        resources: {}\n        securityContext:\n          privileged: true\n          runAsUser: 0\n        terminationMessagePath: /dev/termination-log\n        terminationMessagePolicy: File\n      restartPolicy: Always\n      schedulerName: default-scheduler\n      securityContext:\n        fsGroup: 1000\n        runAsUser: 1000\n      terminationGracePeriodSeconds: 120\n      volumes:\n      - configMap:\n          defaultMode: 420\n          name: elasticsearch-master-config\n        name: esconfig\n      - name: elastic-internal-http-certificates\n        secret:\n          defaultMode: 420\n          optional: false\n          secretName: elasticsearch-es-http-certs-internal\n      - name: elastic-internal-remote-certificate-authorities\n        secret:\n          defaultMode: 420\n          optional: false\n          secretName: elasticsearch-es-remote-ca\n      - name: elastic-internal-transport-certificates\n        secret:\n          defaultMode: 420\n          optional: false\n          secretName: elasticsearch-es-master-es-transport-certs\n\n</code></pre>\n\n\n\n<pre class="wp-block-verse">what we are doing is adding the image so we match are using elasticsearch 8 now, Then we are adding the TLS certs created by the operator. \nAnd we are settings some new xpack settings for the cluster.\nApply the following but notice the replica 0. So the statefulset will not start.\nAfter your have apply we need to remove some env in the statefulset\n</pre>\n\n\n\n<pre class="wp-block-code"><code>\nkubect edit statefulset elasticsearch-master -n elastic</code></pre>\n\n\n\n<p>Remove the following from the statefulset </p>\n\n\n\n<pre class="wp-block-code"><code>        - name: cluster.deprecation_indexing.enabled\n          value: "false"\n        - name: off.node.data\n          value: "false"\n        - name: off.node.ingest\n          value: "false"\n        - name: off.node.master\n          value: "true"\n        - name: off.node.ml\n          value: "true"\n        - name: off.node.remote_cluster_client\n          value: "true"</code></pre>\n\n\n\n<p>and change </p>\n\n\n\n<pre class="wp-block-code"><code>replicas: 3</code></pre>\n\n\n\n<p>Now your elasticsearch should start up the master nodes and form a cluster using TLS.<br></p>\n\n\n\n<h2 class="wp-block-heading">Time to add the datanodes </h2>\n\n\n\n<pre class="wp-block-code"><code>apiVersion: apps/v1\nkind: StatefulSet\nmetadata:\n  annotations:\n    esMajorVersion: "8"\n    meta.helm.sh/release-name: elasticsearch\n    meta.helm.sh/release-namespace: elastic\n  generation: 106\n  labels:\n    app: elasticsearch-data\n    app.kubernetes.io/managed-by: Helm\n    chart: elasticsearch\n    heritage: Helm\n    release: elasticsearch\n  name: elasticsearch-data\n  namespace: elastic\nspec:\n  podManagementPolicy: Parallel\n  replicas: 0\n  selector:\n    matchLabels:\n      app: elasticsearch-data\n  serviceName: elasticsearch-data-headless\n  template:\n    metadata:\n      labels:\n        app: elasticsearch-data\n        chart: elasticsearch\n        release: elasticsearch\n      name: elasticsearch-data\n    spec:\n      affinity:\n        podAntiAffinity:\n          requiredDuringSchedulingIgnoredDuringExecution:\n          - labelSelector:\n              matchExpressions:\n              - key: app\n                operator: In\n                values:\n                - elasticsearch-data\n            topologyKey: kubernetes.io/hostname\n      automountServiceAccountToken: true\n      containers:\n      - env:\n        - name: node.name\n          valueFrom:\n            fieldRef:\n              apiVersion: v1\n              fieldPath: metadata.name\n        - name: cluster.initial_master_nodes\n          value: elasticsearch-master-0,elasticsearch-master-1,elasticsearch-master-2,\n        - name: node.roles\n          value: data,data_content,data_hot,ingest,ml,remote_cluster_client,transform,\n        - name: discovery.seed_hosts\n          value: elasticsearch-master-headless\n        - name: cluster.name\n          value: elasticsearch\n        - name: network.host\n          value: 0.0.0.0\n        - name: ELASTIC_PASSWORD\n          valueFrom:\n            secretKeyRef:\n              key: elastic-internal\n              name: elasticsearch-es-internal-users\n        - name: ES_JAVA_OPTS\n          value: -Xmx5g -Xms5g\n        - name: xpack.security.enabled\n          value: "true"\n        - name: xpack.security.transport.ssl.enabled\n          value: "true"\n        - name: xpack.security.http.ssl.enabled\n          value: "false"\n        - name: xpack.security.transport.ssl.verification_mode\n          value: none\n        - name: xpack.security.transport.ssl.key\n          value: /usr/share/elasticsearch/config/certs/elasticsearch-es-data-0.tls.key\n        - name: xpack.security.transport.ssl.certificate\n          value: /usr/share/elasticsearch/config/certs/elasticsearch-es-data-0.tls.crt\n        - name: xpack.security.transport.ssl.certificate_authorities\n          value: /usr/share/elasticsearch/config/certs/ca.crt\n        - name: xpack.security.http.ssl.key\n          value: /usr/share/elasticsearch/config/certs/elasticsearch-es-data-0.tls.key\n        - name: xpack.security.http.ssl.certificate\n          value: /usr/share/elasticsearch/config/certs/elasticsearch-es-data-0.tls.crt\n        - name: xpack.security.http.ssl.certificate_authorities\n          value: /usr/share/elasticsearch/config/certs/ca.crt\n        image: docker.elastic.co/elasticsearch/elasticsearch:8.1.3\n        imagePullPolicy: IfNotPresent\n        name: elasticsearch\n        ports:\n        - containerPort: 9200\n          name: http\n          protocol: TCP\n        - containerPort: 9300\n          name: transport\n          protocol: TCP\n        readinessProbe:\n          exec:\n            command:\n            - bash\n            - -c\n            - |\n              set -e\n\n              # Exit if ELASTIC_PASSWORD in unset\n              if &#91; -z "${ELASTIC_PASSWORD}" ]; then\n                echo "ELASTIC_PASSWORD variable is missing, exiting"\n                exit 1\n              fi\n\n              # If the node is starting up wait for the cluster to be ready (request params: "wait_for_status=green&amp;timeout=1s" )\n              # Once it has started only check that the node itself is responding\n              START_FILE=/tmp/.es_start_file\n\n              # Disable nss cache to avoid filling dentry cache when calling curl\n              # This is required with Elasticsearch Docker using nss &lt; 3.52\n              export NSS_SDB_USE_CACHE=no\n\n              http () {\n                local path="${1}"\n                local args="${2}"\n                set -- -XGET -s\n\n                if &#91; "$args" != "" ]; then\n                  set -- "$@" $args\n                fi\n\n                set -- "$@" -u "elastic:${ELASTIC_PASSWORD}"\n\n                curl --output /dev/null -k "$@" "https://127.0.0.1:9200${path}"\n              }\n\n              if &#91; -f "${START_FILE}" ]; then\n                echo \'Elasticsearch is already running, lets check the node is healthy\'\n                HTTP_CODE=$(http "/" "-w %{http_code}")\n                RC=$?\n                if &#91;&#91; ${RC} -ne 0 ]]; then\n                  echo "curl --output /dev/null -k -XGET -s -w \'%{http_code}\' \\${BASIC_AUTH} https://127.0.0.1:9200/ failed with RC ${RC}"\n                  exit ${RC}\n                fi\n                # ready if HTTP code 200, 503 is tolerable if ES version is 6.x\n                if &#91;&#91; ${HTTP_CODE} == "200" ]]; then\n                  exit 0\n                elif &#91;&#91; ${HTTP_CODE} == "503" &amp;&amp; "8" == "6" ]]; then\n                  exit 0\n                else\n                  echo "curl --output /dev/null -k -XGET -s -w \'%{http_code}\' \\${BASIC_AUTH} https://127.0.0.1:9200/ failed with HTTP code ${HTTP_CODE}"\n                  exit 1\n                fi\n\n              else\n                echo \'Waiting for elasticsearch cluster to become ready (request params: "wait_for_status=green&amp;timeout=1s" )\'\n                if http "/_cluster/health?wait_for_status=green&amp;timeout=1s" "--fail" ; then\n                  touch ${START_FILE}\n                  exit 0\n                else\n                  echo \'Cluster is not yet ready (request params: "wait_for_status=green&amp;timeout=1s" )\'\n                  exit 1\n                fi\n              fi\n          failureThreshold: 3\n          initialDelaySeconds: 600\n          periodSeconds: 10\n          successThreshold: 3\n          timeoutSeconds: 5\n        resources:\n          limits:\n            cpu: "3"\n            memory: 7Gi\n          requests:\n            cpu: 500m\n            memory: 3Gi\n        securityContext:\n          capabilities:\n            drop:\n            - ALL\n          runAsNonRoot: true\n          runAsUser: 1000\n        terminationMessagePath: /dev/termination-log\n        terminationMessagePolicy: File\n        volumeMounts:\n        - mountPath: /usr/share/elasticsearch/data\n          name: elasticsearch-data\n        - mountPath: /usr/share/elasticsearch/config/certs\n          name: elastic-internal-transport-certificates\n          readOnly: true\n        - mountPath: /usr/share/elasticsearch/config/elasticsearch.yml\n          name: esconfig\n          subPath: elasticsearch.yml\n      dnsPolicy: ClusterFirst\n      enableServiceLinks: true\n      initContainers:\n      - command:\n        - sysctl\n        - -w\n        - vm.max_map_count=262144\n        image: docker.elastic.co/elasticsearch/elasticsearch:8.1.0\n        imagePullPolicy: IfNotPresent\n        name: configure-sysctl\n        resources: {}\n        securityContext:\n          privileged: true\n          runAsUser: 0\n        terminationMessagePath: /dev/termination-log\n        terminationMessagePolicy: File\n      restartPolicy: Always\n      schedulerName: default-scheduler\n      securityContext:\n        fsGroup: 1000\n        runAsUser: 1000\n      terminationGracePeriodSeconds: 120\n      volumes:\n      - configMap:\n          defaultMode: 420\n          name: elasticsearch-data-config\n        name: esconfig\n      - name: elastic-internal-http-certificates\n        secret:\n          defaultMode: 420\n          optional: false\n          secretName: elasticsearch-es-http-certs-internal\n      - name: elastic-internal-remote-certificate-authorities\n        secret:\n          defaultMode: 420\n          optional: false\n          secretName: elasticsearch-es-remote-ca\n      - name: elastic-internal-transport-certificates\n        secret:\n          defaultMode: 420\n          optional: false\n          secretName: elasticsearch-es-data-es-transport-certs\n\n</code></pre>\n\n\n\n<p>We need to do the same here. Apply the stateful set and then edit it to remove </p>\n\n\n\n<pre class="wp-block-code"><code>        - name: cluster.deprecation_indexing.enabled\n          value: "false"\n        - name: off.node.data\n          value: "false"\n        - name: off.node.ingest\n          value: "false"\n        - name: off.node.master\n          value: "true"\n        - name: off.node.ml\n          value: "true"\n        - name: off.node.remote_cluster_client\n          value: "true"</code></pre>\n\n\n\n<p>And change the replica set to 3 or what ever you had before on your data nodes.</p>\n\n\n\n<h2 class="wp-block-heading">Verify</h2>\n\n\n\n<pre class="wp-block-code"><code>kubectl exec -it  elasticsearch-master-2 -n elastic /bin/bash</code></pre>\n\n\n\n<pre class="wp-block-code"><code>elasticsearch@elasticsearch-master-2:~$ env | grep PASSWORD\nELASTIC_PASSWORD=s\nelasticsearch@elasticsearch-master-2:~$ </code></pre>\n\n\n\n<pre class="wp-block-code"><code>\nelasticsearch@elasticsearch-master-2:~$ curl -u elastic:$ELASTIC_PASSWORD -v http://127.0.0.1:9200/_cluster/health?pretty\n*   Trying 127.0.0.1:9200...\n* TCP_NODELAY set\n* Connected to 127.0.0.1 (127.0.0.1) port 9200 (#0)\n* Server auth using Basic with user \'elastic\'\n> GET /_cluster/health?pretty HTTP/1.1\n> Host: 127.0.0.1:9200\n> Authorization: Basic ZWxhc3RpYzpzRDdHc1hyU3NaNTF1MTc0OHoyMFFFM1I=\n> User-Agent: curl/7.68.0\n> Accept: */*\n> \n* Mark bundle as not supporting multiuse\n&lt; HTTP/1.1 200 OK\n&lt; X-elastic-product: Elasticsearch\n&lt; content-type: application/json\n&lt; content-length: 488\n&lt; \n{\n  "cluster_name" : "elasticsearch",\n  "status" : "yellow",\n  "timed_out" : false,\n  "number_of_nodes" : 8,\n  "number_of_data_nodes" : 4,\n  "active_primary_shards" : 3186,\n  "active_shards" : 3950,\n  "relocating_shards" : 0,\n  "initializing_shards" : 0,\n  "unassigned_shards" : 2422,\n  "delayed_unassigned_shards" : 0,\n  "number_of_pending_tasks" : 1,\n  "number_of_in_flight_fetch" : 0,\n  "task_max_waiting_in_queue_millis" : 0,\n  "active_shards_percent_as_number" : 61.98995605775267\n}\n* Connection #0 to host 127.0.0.1 left intact</code></pre>\n\n\n\n<p>Your cluster should now be connected and starting up again.<br>Let&#8217;s add the nodes from the operator </p>\n\n\n\n<h2 class="wp-block-heading">Adding new Nodes</h2>\n\n\n\n<p>Now we have a running cluster, and we can start up the nodes from the operator. The nodes will connect and add to the current cluster.</p>\n\n\n\n<p>Start by starting up the operator by changing the operator statefulset </p>\n\n\n\n<pre class="wp-block-code"><code>kubectl edit statefulset elastic-operator -n elastic-system</code></pre>\n\n\n\n<p>And enable the elastic statefulset </p>\n\n\n\n<pre class="wp-block-code"><code>kubectl edit statefulset elasticsearch-es-data -n elastic\nkubectl edit statefulset elasticsearch-es-master -n elastic</code></pre>\n\n\n\n<p>Edit so you have replicas 1, so we can slowly add more nodes later </p>\n\n\n\n<p>Verify with the curl command above so that the new nodes are added to the elasticsearch cluster </p>\n\n\n\n<h2 class="wp-block-heading">Deploy Kibana</h2>\n\n\n\n<p>Uncomment the kibana part in the elasticsearch YAML at the top of that page and apply it to the cluster.</p>\n\n\n\n<h2 class="wp-block-heading">Security</h2>\n\n\n\n<p>the new cluster will enforce user and password, so you need to create a user for your service. I hade an open cluster but now I have created a user for my service. Here are some commands i run to set up users,</p>\n\n\n\n<pre class="wp-block-code"><code>{\n  "password" : "mon",\n  "roles" :  &#91; "monitoring_user","remote_monitoring_collector","snapshot_user"  ]\n  "full_name" : "monitoring",\n  "email" : "monitoring@",\n  "metadata" : {\n    "init" : 1\n  }\n}\n\ncurl -X POST --user elastic:O"localhost:9200/_security/user/monitoring" -H \'Content-Type: application/json\' -d @monitoring.json\n\n\n\n\n\n{\n  "password" : "",\n  "roles" : &#91; "admin","kibana_system","kibana_admin","monitoring_user"  ],\n  "full_name" : "Kibana",\n  "email" : "kibana@",\n  "metadata" : {\n    "init" : 1\n  }\n}\n\ncurl -X POST --user elastic:"localhost:9200/_security/user/fluentd" -H \'Content-Type: application/json\' -d @fluentd.json\n{\n  "password" : "h",\n  "roles" : &#91; "fluentd"  ],\n  "full_name" : "fluentd",\n  "email" : "fluentd@example",\n  "metadata" : {\n    "init" : 1\n  }\n}\n\n\n\ncurl -X POST --user elastic:PASSWORD "localhost:9200/_security/role/" -H \'Content-Type: application/json\' -d @fluentdrole.json\n\n{\n  "cluster": &#91;"all"],\n  "indices": &#91;\n    {\n      "names": &#91; "kube.*" ],\n       "privileges": &#91;"all"]\n    }\n  ],\n  "applications": &#91;\n    {\n      "application": "fluentd",\n      "privileges": &#91; "admin", "read","write" ],\n      "resources": &#91; "*" ]\n\n    }\n  ]\n\n}</code></pre>\n', 'protected': False}</p>
+    <h2>Migrate Elasticsearch helm to Elasticsearch Operator</h2>
+    <p>
+<p>Migrate elasticsearch helm to elasticsearch operator and from version 7 to version 8.<br>So in the start, I used the helm chart for elasticsearch, and everything worked fine. Then elasticsearch 8 comes and the Elasticsearch operator.<br>This broke by helm chart and kind of left me in a stalled state.<br>But now I have to migrate my current elasticsearch that uses a helm chart to start using the operator.<br><br>The migration is done in steps </p>
+
+
+
+<p>1. Deploy the elasticsearch operator and create a small cluster. Mine is only one master and one data node.<br>We set the new cluster to init against my current elasticsearch master, and we disable the TLS checks.<br>some nodes are that the version is low I need to upgrade the data, And a also used PSP in the cluster, so added the SecurityContext. You may delete them.<br></p>
+
+
+
+<p></p>
+
+
+
+<pre class="wp-block-code"><code>
+apiVersion: elasticsearch.k8s.elastic.co/v1
+kind: Elasticsearch
+metadata:
+  name: elasticsearch
+spec:
+  version: 8.1.3
+  http:
+    tls:
+      selfSignedCertificate:
+        disabled: true
+  nodeSets:
+  - name: data
+    count: 1
+    podTemplate:
+      spec:
+        securityContext:
+          runAsUser: 1000 
+          fsGroup: 1000
+    volumeClaimTemplates:
+    - metadata:
+        name: elasticsearch-data # Do not change this name unless you set up a volume mount for the data path.
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 300Gi
+        storageClassName: openebs-lvmpv-late
+    #env:
+    #  - name: cluster.initial_master_nodes
+    #    value: elasticsearch-master-0,elasticsearch-master-1,elasticsearch-master-2,
+    #  - name: discovery.seed_hosts                                  
+    #    value:  elasticsearch-master-headless
+    #  - name: xpack.security.enabled                                
+    #    value: false
+    #  - name: xpack.security.transport.ssl.enabled
+    #    value: false
+    #  - name: xpack.security.http.ssl.enabled
+    #    value: false
+
+    config:
+      node.store.allow_mmap: false
+      node.roles: &#91;"data","ingest","transform","data_hot","data_warm","data_content"]
+      xpack.ml.enabled: true
+      xpack.security:
+        transport:
+          ssl:
+            verification_mode: none
+        authc:
+          anonymous:
+            username: anonymous
+            roles: superuser
+            authz_exception: false
+      discovery.seed_hosts:
+         - elasticsearch-master-headless
+      cluster.initial_master_nodes: 
+         - elasticsearch-master-0
+         - elasticsearch-master-1
+         - elasticsearch-master-2
+      #node.remote_cluster_client: false
+  - name: master
+    config:
+    count: 1
+    podTemplate:
+      spec:
+        securityContext:
+          runAsUser: 1000 
+          fsGroup: 1000
+    volumeClaimTemplates:
+    - metadata:
+        name: elasticsearch-data # Do not change this name unless you set up a volume mount for the data path.
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 30Gi
+        storageClassName: openebs-lvmpv-late
+    #env:
+    #  - name: cluster.initial_master_nodes
+    #    value: elasticsearch-master-0,elasticsearch-master-1,elasticsearch-master-2,
+    #  - name: discovery.seed_hosts                                  
+    #    value:  elasticsearch-master-headless
+    #  - name: xpack.security.enabled                                
+    #    value: false
+    #  - name: xpack.security.transport.ssl.enabled
+    #    value: false
+    #  - name: xpack.security.http.ssl.enabled
+    #    value: false
+    config:
+      node.store.allow_mmap: false
+      node.roles: &#91;"master"]
+      xpack.security:
+        transport:
+          ssl:
+            verification_mode: none
+        authc:
+          anonymous:
+            username: anonymous
+            roles: superuser
+            authz_exception: false
+      discovery.seed_hosts:
+         - elasticsearch-master-headless
+      cluster.initial_master_nodes: 
+         - elasticsearch-master-0
+         - elasticsearch-master-1
+         - elasticsearch-master-2
+---
+#apiVersion: kibana.k8s.elastic.co/v1
+#kind: Kibana
+#metadata:
+#  name: quickstart
+#spec:
+#  version: 8.1.3
+#  count: 1
+#  elasticsearchRef:
+#    name: elasticsearch
+</code></pre>
+
+
+
+<p>So we deploy the cluster but its only so we can use the TLS certs that are created and the users.<br>So as soon as the pods start we are to stop them<br><br>First, stop the elasticsearch-operator else it will try to restart the statefulset.</p>
+
+
+
+<pre class="wp-block-code"><code>kubectl edit statefulset elastic-operator -n elastic-system</code></pre>
+
+
+
+<p>Change the replicas to 0 and save.<br>Do the same to the new elasticsearch statefulset also.<br></p>
+
+
+
+<pre class="wp-block-code"><code>kubectl edit statefulset elasticsearch-es-data -n elastic<br>kubectl edit statefulset elasticsearch-es-master -n elastic</code></pre>
+
+
+
+<p>Now lets patch our current elasticsearch statefulset. I have two one for my datanodes and one for my master.<br>Lets stop the current elasticsearch nodes as well by setting the repl in statefulset to 0 for them as well</p>
+
+
+
+<pre class="wp-block-code"><code>kubectl edit statefulset elasticsearch-data -n elastic 
+kubectl edit statefulset elasticsearch-master -n elastic</code></pre>
+
+
+
+<p>Now we can apply our new statefulset config for our master.<br></p>
+
+
+
+<pre class="wp-block-code"><code>
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  annotations:
+    esMajorVersion: "8"
+    meta.helm.sh/release-name: elasticsearch
+    meta.helm.sh/release-namespace: elastic
+  generation: 106
+  labels:
+    app: elasticsearch-master
+    app.kubernetes.io/managed-by: Helm
+    chart: elasticsearch
+    heritage: Helm
+    release: elasticsearch
+  name: elasticsearch-master
+  namespace: elastic
+spec:
+  podManagementPolicy: Parallel
+  replicas: 0
+  selector:
+    matchLabels:
+      app: elasticsearch-master
+  serviceName: elasticsearch-master-headless
+  template:
+    metadata:
+      labels:
+        app: elasticsearch-master
+        chart: elasticsearch
+        release: elasticsearch
+      name: elasticsearch-master
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - elasticsearch-master
+            topologyKey: kubernetes.io/hostname
+      automountServiceAccountToken: true
+      containers:
+      - env:
+        - name: node.name
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        - name: cluster.initial_master_nodes
+          value: elasticsearch-master-0,elasticsearch-master-1,elasticsearch-master-2,
+        - name: node.roles
+          value: master
+        - name: discovery.seed_hosts
+          value: elasticsearch-master-headless
+        - name: cluster.name
+          value: elasticsearch
+        - name: network.host
+          value: 0.0.0.0
+        - name: ELASTIC_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: elastic-internal
+              name: elasticsearch-es-internal-users
+        - name: ES_JAVA_OPTS
+          value: -Xmx5g -Xms5g
+        - name: xpack.security.enabled
+          value: "true"
+        - name: xpack.security.transport.ssl.enabled
+          value: "true"
+        - name: xpack.security.http.ssl.enabled
+          value: "false"
+        - name: xpack.security.transport.ssl.verification_mode
+          value: none
+        - name: xpack.security.transport.ssl.key
+          value: /usr/share/elasticsearch/config/certs/elasticsearch-es-master-0.tls.key
+        - name: xpack.security.transport.ssl.certificate
+          value: /usr/share/elasticsearch/config/certs/elasticsearch-es-master-0.tls.crt
+        - name: xpack.security.transport.ssl.certificate_authorities
+          value: /usr/share/elasticsearch/config/certs/ca.crt
+        - name: xpack.security.http.ssl.key
+          value: /usr/share/elasticsearch/config/certs/elasticsearch-es-master-0.tls.key
+        - name: xpack.security.http.ssl.certificate
+          value: /usr/share/elasticsearch/config/certs/elasticsearch-es-master-0.tls.crt
+        - name: xpack.security.http.ssl.certificate_authorities
+          value: /usr/share/elasticsearch/config/certs/ca.crt
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.1.3
+        imagePullPolicy: IfNotPresent
+        name: elasticsearch
+        ports:
+        - containerPort: 9200
+          name: http
+          protocol: TCP
+        - containerPort: 9300
+          name: transport
+          protocol: TCP
+        readinessProbe:
+          exec:
+            command:
+            - bash
+            - -c
+            - |
+              set -e
+
+              # Exit if ELASTIC_PASSWORD in unset
+              if &#91; -z "${ELASTIC_PASSWORD}" ]; then
+                echo "ELASTIC_PASSWORD variable is missing, exiting"
+                exit 1
+              fi
+
+              # If the node is starting up wait for the cluster to be ready (request params: "wait_for_status=green&amp;timeout=1s" )
+              # Once it has started only check that the node itself is responding
+              START_FILE=/tmp/.es_start_file
+
+              # Disable nss cache to avoid filling dentry cache when calling curl
+              # This is required with Elasticsearch Docker using nss &lt; 3.52
+              export NSS_SDB_USE_CACHE=no
+
+              http () {
+                local path="${1}"
+                local args="${2}"
+                set -- -XGET -s
+
+                if &#91; "$args" != "" ]; then
+                  set -- "$@" $args
+                fi
+
+                set -- "$@" -u "elastic:${ELASTIC_PASSWORD}"
+
+                curl --output /dev/null -k "$@" "https://127.0.0.1:9200${path}"
+              }
+
+              if &#91; -f "${START_FILE}" ]; then
+                echo 'Elasticsearch is already running, lets check the node is healthy'
+                HTTP_CODE=$(http "/" "-w %{http_code}")
+                RC=$?
+                if &#91;&#91; ${RC} -ne 0 ]]; then
+                  echo "curl --output /dev/null -k -XGET -s -w '%{http_code}' \${BASIC_AUTH} https://127.0.0.1:9200/ failed with RC ${RC}"
+                  exit ${RC}
+                fi
+                # ready if HTTP code 200, 503 is tolerable if ES version is 6.x
+                if &#91;&#91; ${HTTP_CODE} == "200" ]]; then
+                  exit 0
+                elif &#91;&#91; ${HTTP_CODE} == "503" &amp;&amp; "8" == "6" ]]; then
+                  exit 0
+                else
+                  echo "curl --output /dev/null -k -XGET -s -w '%{http_code}' \${BASIC_AUTH} https://127.0.0.1:9200/ failed with HTTP code ${HTTP_CODE}"
+                  exit 1
+                fi
+
+              else
+                echo 'Waiting for elasticsearch cluster to become ready (request params: "wait_for_status=green&amp;timeout=1s" )'
+                if http "/_cluster/health?wait_for_status=green&amp;timeout=1s" "--fail" ; then
+                  touch ${START_FILE}
+                  exit 0
+                else
+                  echo 'Cluster is not yet ready (request params: "wait_for_status=green&amp;timeout=1s" )'
+                  exit 1
+                fi
+              fi
+          failureThreshold: 3
+          initialDelaySeconds: 600
+          periodSeconds: 10
+          successThreshold: 3
+          timeoutSeconds: 5
+        resources:
+          limits:
+            cpu: "3"
+            memory: 7Gi
+          requests:
+            cpu: 500m
+            memory: 3Gi
+        securityContext:
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 1000
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /usr/share/elasticsearch/data
+          name: elasticsearch-master
+        - mountPath: /usr/share/elasticsearch/config/certs
+          name: elastic-internal-transport-certificates
+          readOnly: true
+        - mountPath: /usr/share/elasticsearch/config/elasticsearch.yml
+          name: esconfig
+          subPath: elasticsearch.yml
+      dnsPolicy: ClusterFirst
+      enableServiceLinks: true
+      initContainers:
+      - command:
+        - sysctl
+        - -w
+        - vm.max_map_count=262144
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.1.0
+        imagePullPolicy: IfNotPresent
+        name: configure-sysctl
+        resources: {}
+        securityContext:
+          privileged: true
+          runAsUser: 0
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+      terminationGracePeriodSeconds: 120
+      volumes:
+      - configMap:
+          defaultMode: 420
+          name: elasticsearch-master-config
+        name: esconfig
+      - name: elastic-internal-http-certificates
+        secret:
+          defaultMode: 420
+          optional: false
+          secretName: elasticsearch-es-http-certs-internal
+      - name: elastic-internal-remote-certificate-authorities
+        secret:
+          defaultMode: 420
+          optional: false
+          secretName: elasticsearch-es-remote-ca
+      - name: elastic-internal-transport-certificates
+        secret:
+          defaultMode: 420
+          optional: false
+          secretName: elasticsearch-es-master-es-transport-certs
+
+</code></pre>
+
+
+
+<pre class="wp-block-verse">what we are doing is adding the image so we match are using elasticsearch 8 now, Then we are adding the TLS certs created by the operator. 
+And we are settings some new xpack settings for the cluster.
+Apply the following but notice the replica 0. So the statefulset will not start.
+After your have apply we need to remove some env in the statefulset
+</pre>
+
+
+
+<pre class="wp-block-code"><code>
+kubect edit statefulset elasticsearch-master -n elastic</code></pre>
+
+
+
+<p>Remove the following from the statefulset </p>
+
+
+
+<pre class="wp-block-code"><code>        - name: cluster.deprecation_indexing.enabled
+          value: "false"
+        - name: off.node.data
+          value: "false"
+        - name: off.node.ingest
+          value: "false"
+        - name: off.node.master
+          value: "true"
+        - name: off.node.ml
+          value: "true"
+        - name: off.node.remote_cluster_client
+          value: "true"</code></pre>
+
+
+
+<p>and change </p>
+
+
+
+<pre class="wp-block-code"><code>replicas: 3</code></pre>
+
+
+
+<p>Now your elasticsearch should start up the master nodes and form a cluster using TLS.<br></p>
+
+
+
+<h2 class="wp-block-heading">Time to add the datanodes </h2>
+
+
+
+<pre class="wp-block-code"><code>apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  annotations:
+    esMajorVersion: "8"
+    meta.helm.sh/release-name: elasticsearch
+    meta.helm.sh/release-namespace: elastic
+  generation: 106
+  labels:
+    app: elasticsearch-data
+    app.kubernetes.io/managed-by: Helm
+    chart: elasticsearch
+    heritage: Helm
+    release: elasticsearch
+  name: elasticsearch-data
+  namespace: elastic
+spec:
+  podManagementPolicy: Parallel
+  replicas: 0
+  selector:
+    matchLabels:
+      app: elasticsearch-data
+  serviceName: elasticsearch-data-headless
+  template:
+    metadata:
+      labels:
+        app: elasticsearch-data
+        chart: elasticsearch
+        release: elasticsearch
+      name: elasticsearch-data
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - elasticsearch-data
+            topologyKey: kubernetes.io/hostname
+      automountServiceAccountToken: true
+      containers:
+      - env:
+        - name: node.name
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        - name: cluster.initial_master_nodes
+          value: elasticsearch-master-0,elasticsearch-master-1,elasticsearch-master-2,
+        - name: node.roles
+          value: data,data_content,data_hot,ingest,ml,remote_cluster_client,transform,
+        - name: discovery.seed_hosts
+          value: elasticsearch-master-headless
+        - name: cluster.name
+          value: elasticsearch
+        - name: network.host
+          value: 0.0.0.0
+        - name: ELASTIC_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: elastic-internal
+              name: elasticsearch-es-internal-users
+        - name: ES_JAVA_OPTS
+          value: -Xmx5g -Xms5g
+        - name: xpack.security.enabled
+          value: "true"
+        - name: xpack.security.transport.ssl.enabled
+          value: "true"
+        - name: xpack.security.http.ssl.enabled
+          value: "false"
+        - name: xpack.security.transport.ssl.verification_mode
+          value: none
+        - name: xpack.security.transport.ssl.key
+          value: /usr/share/elasticsearch/config/certs/elasticsearch-es-data-0.tls.key
+        - name: xpack.security.transport.ssl.certificate
+          value: /usr/share/elasticsearch/config/certs/elasticsearch-es-data-0.tls.crt
+        - name: xpack.security.transport.ssl.certificate_authorities
+          value: /usr/share/elasticsearch/config/certs/ca.crt
+        - name: xpack.security.http.ssl.key
+          value: /usr/share/elasticsearch/config/certs/elasticsearch-es-data-0.tls.key
+        - name: xpack.security.http.ssl.certificate
+          value: /usr/share/elasticsearch/config/certs/elasticsearch-es-data-0.tls.crt
+        - name: xpack.security.http.ssl.certificate_authorities
+          value: /usr/share/elasticsearch/config/certs/ca.crt
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.1.3
+        imagePullPolicy: IfNotPresent
+        name: elasticsearch
+        ports:
+        - containerPort: 9200
+          name: http
+          protocol: TCP
+        - containerPort: 9300
+          name: transport
+          protocol: TCP
+        readinessProbe:
+          exec:
+            command:
+            - bash
+            - -c
+            - |
+              set -e
+
+              # Exit if ELASTIC_PASSWORD in unset
+              if &#91; -z "${ELASTIC_PASSWORD}" ]; then
+                echo "ELASTIC_PASSWORD variable is missing, exiting"
+                exit 1
+              fi
+
+              # If the node is starting up wait for the cluster to be ready (request params: "wait_for_status=green&amp;timeout=1s" )
+              # Once it has started only check that the node itself is responding
+              START_FILE=/tmp/.es_start_file
+
+              # Disable nss cache to avoid filling dentry cache when calling curl
+              # This is required with Elasticsearch Docker using nss &lt; 3.52
+              export NSS_SDB_USE_CACHE=no
+
+              http () {
+                local path="${1}"
+                local args="${2}"
+                set -- -XGET -s
+
+                if &#91; "$args" != "" ]; then
+                  set -- "$@" $args
+                fi
+
+                set -- "$@" -u "elastic:${ELASTIC_PASSWORD}"
+
+                curl --output /dev/null -k "$@" "https://127.0.0.1:9200${path}"
+              }
+
+              if &#91; -f "${START_FILE}" ]; then
+                echo 'Elasticsearch is already running, lets check the node is healthy'
+                HTTP_CODE=$(http "/" "-w %{http_code}")
+                RC=$?
+                if &#91;&#91; ${RC} -ne 0 ]]; then
+                  echo "curl --output /dev/null -k -XGET -s -w '%{http_code}' \${BASIC_AUTH} https://127.0.0.1:9200/ failed with RC ${RC}"
+                  exit ${RC}
+                fi
+                # ready if HTTP code 200, 503 is tolerable if ES version is 6.x
+                if &#91;&#91; ${HTTP_CODE} == "200" ]]; then
+                  exit 0
+                elif &#91;&#91; ${HTTP_CODE} == "503" &amp;&amp; "8" == "6" ]]; then
+                  exit 0
+                else
+                  echo "curl --output /dev/null -k -XGET -s -w '%{http_code}' \${BASIC_AUTH} https://127.0.0.1:9200/ failed with HTTP code ${HTTP_CODE}"
+                  exit 1
+                fi
+
+              else
+                echo 'Waiting for elasticsearch cluster to become ready (request params: "wait_for_status=green&amp;timeout=1s" )'
+                if http "/_cluster/health?wait_for_status=green&amp;timeout=1s" "--fail" ; then
+                  touch ${START_FILE}
+                  exit 0
+                else
+                  echo 'Cluster is not yet ready (request params: "wait_for_status=green&amp;timeout=1s" )'
+                  exit 1
+                fi
+              fi
+          failureThreshold: 3
+          initialDelaySeconds: 600
+          periodSeconds: 10
+          successThreshold: 3
+          timeoutSeconds: 5
+        resources:
+          limits:
+            cpu: "3"
+            memory: 7Gi
+          requests:
+            cpu: 500m
+            memory: 3Gi
+        securityContext:
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 1000
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /usr/share/elasticsearch/data
+          name: elasticsearch-data
+        - mountPath: /usr/share/elasticsearch/config/certs
+          name: elastic-internal-transport-certificates
+          readOnly: true
+        - mountPath: /usr/share/elasticsearch/config/elasticsearch.yml
+          name: esconfig
+          subPath: elasticsearch.yml
+      dnsPolicy: ClusterFirst
+      enableServiceLinks: true
+      initContainers:
+      - command:
+        - sysctl
+        - -w
+        - vm.max_map_count=262144
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.1.0
+        imagePullPolicy: IfNotPresent
+        name: configure-sysctl
+        resources: {}
+        securityContext:
+          privileged: true
+          runAsUser: 0
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+      terminationGracePeriodSeconds: 120
+      volumes:
+      - configMap:
+          defaultMode: 420
+          name: elasticsearch-data-config
+        name: esconfig
+      - name: elastic-internal-http-certificates
+        secret:
+          defaultMode: 420
+          optional: false
+          secretName: elasticsearch-es-http-certs-internal
+      - name: elastic-internal-remote-certificate-authorities
+        secret:
+          defaultMode: 420
+          optional: false
+          secretName: elasticsearch-es-remote-ca
+      - name: elastic-internal-transport-certificates
+        secret:
+          defaultMode: 420
+          optional: false
+          secretName: elasticsearch-es-data-es-transport-certs
+
+</code></pre>
+
+
+
+<p>We need to do the same here. Apply the stateful set and then edit it to remove </p>
+
+
+
+<pre class="wp-block-code"><code>        - name: cluster.deprecation_indexing.enabled
+          value: "false"
+        - name: off.node.data
+          value: "false"
+        - name: off.node.ingest
+          value: "false"
+        - name: off.node.master
+          value: "true"
+        - name: off.node.ml
+          value: "true"
+        - name: off.node.remote_cluster_client
+          value: "true"</code></pre>
+
+
+
+<p>And change the replica set to 3 or what ever you had before on your data nodes.</p>
+
+
+
+<h2 class="wp-block-heading">Verify</h2>
+
+
+
+<pre class="wp-block-code"><code>kubectl exec -it  elasticsearch-master-2 -n elastic /bin/bash</code></pre>
+
+
+
+<pre class="wp-block-code"><code>elasticsearch@elasticsearch-master-2:~$ env | grep PASSWORD
+ELASTIC_PASSWORD=s
+elasticsearch@elasticsearch-master-2:~$ </code></pre>
+
+
+
+<pre class="wp-block-code"><code>
+elasticsearch@elasticsearch-master-2:~$ curl -u elastic:$ELASTIC_PASSWORD -v http://127.0.0.1:9200/_cluster/health?pretty
+*   Trying 127.0.0.1:9200...
+* TCP_NODELAY set
+* Connected to 127.0.0.1 (127.0.0.1) port 9200 (#0)
+* Server auth using Basic with user 'elastic'
+> GET /_cluster/health?pretty HTTP/1.1
+> Host: 127.0.0.1:9200
+> Authorization: Basic ZWxhc3RpYzpzRDdHc1hyU3NaNTF1MTc0OHoyMFFFM1I=
+> User-Agent: curl/7.68.0
+> Accept: */*
+> 
+* Mark bundle as not supporting multiuse
+&lt; HTTP/1.1 200 OK
+&lt; X-elastic-product: Elasticsearch
+&lt; content-type: application/json
+&lt; content-length: 488
+&lt; 
+{
+  "cluster_name" : "elasticsearch",
+  "status" : "yellow",
+  "timed_out" : false,
+  "number_of_nodes" : 8,
+  "number_of_data_nodes" : 4,
+  "active_primary_shards" : 3186,
+  "active_shards" : 3950,
+  "relocating_shards" : 0,
+  "initializing_shards" : 0,
+  "unassigned_shards" : 2422,
+  "delayed_unassigned_shards" : 0,
+  "number_of_pending_tasks" : 1,
+  "number_of_in_flight_fetch" : 0,
+  "task_max_waiting_in_queue_millis" : 0,
+  "active_shards_percent_as_number" : 61.98995605775267
+}
+* Connection #0 to host 127.0.0.1 left intact</code></pre>
+
+
+
+<p>Your cluster should now be connected and starting up again.<br>Let&#8217;s add the nodes from the operator </p>
+
+
+
+<h2 class="wp-block-heading">Adding new Nodes</h2>
+
+
+
+<p>Now we have a running cluster, and we can start up the nodes from the operator. The nodes will connect and add to the current cluster.</p>
+
+
+
+<p>Start by starting up the operator by changing the operator statefulset </p>
+
+
+
+<pre class="wp-block-code"><code>kubectl edit statefulset elastic-operator -n elastic-system</code></pre>
+
+
+
+<p>And enable the elastic statefulset </p>
+
+
+
+<pre class="wp-block-code"><code>kubectl edit statefulset elasticsearch-es-data -n elastic
+kubectl edit statefulset elasticsearch-es-master -n elastic</code></pre>
+
+
+
+<p>Edit so you have replicas 1, so we can slowly add more nodes later </p>
+
+
+
+<p>Verify with the curl command above so that the new nodes are added to the elasticsearch cluster </p>
+
+
+
+<h2 class="wp-block-heading">Deploy Kibana</h2>
+
+
+
+<p>Uncomment the kibana part in the elasticsearch YAML at the top of that page and apply it to the cluster.</p>
+
+
+
+<h2 class="wp-block-heading">Security</h2>
+
+
+
+<p>the new cluster will enforce user and password, so you need to create a user for your service. I hade an open cluster but now I have created a user for my service. Here are some commands i run to set up users,</p>
+
+
+
+<pre class="wp-block-code"><code>{
+  "password" : "mon",
+  "roles" :  &#91; "monitoring_user","remote_monitoring_collector","snapshot_user"  ]
+  "full_name" : "monitoring",
+  "email" : "monitoring@",
+  "metadata" : {
+    "init" : 1
+  }
+}
+
+curl -X POST --user elastic:O"localhost:9200/_security/user/monitoring" -H 'Content-Type: application/json' -d @monitoring.json
+
+
+
+
+
+{
+  "password" : "",
+  "roles" : &#91; "admin","kibana_system","kibana_admin","monitoring_user"  ],
+  "full_name" : "Kibana",
+  "email" : "kibana@",
+  "metadata" : {
+    "init" : 1
+  }
+}
+
+curl -X POST --user elastic:"localhost:9200/_security/user/fluentd" -H 'Content-Type: application/json' -d @fluentd.json
+{
+  "password" : "h",
+  "roles" : &#91; "fluentd"  ],
+  "full_name" : "fluentd",
+  "email" : "fluentd@example",
+  "metadata" : {
+    "init" : 1
+  }
+}
+
+
+
+curl -X POST --user elastic:PASSWORD "localhost:9200/_security/role/" -H 'Content-Type: application/json' -d @fluentdrole.json
+
+{
+  "cluster": &#91;"all"],
+  "indices": &#91;
+    {
+      "names": &#91; "kube.*" ],
+       "privileges": &#91;"all"]
+    }
+  ],
+  "applications": &#91;
+    {
+      "application": "fluentd",
+      "privileges": &#91; "admin", "read","write" ],
+      "resources": &#91; "*" ]
+
+    }
+  ]
+
+}</code></pre>
+</p>
 
             </div>
         </div>

@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+    <link rel="icon" href="img/favicon.ico" type="image/png">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="description" content="Spent most of my days with a shell, deploys apps, writing code ore fixing problems with automating, This is some of the stuff a work on right now " />
+        <meta name="keywords" content="kubernernetes samma.io sre linux docker devops ks8 help blog fix problems" />
+        <meta property="og:title" content="Lifeandshell - Mattias Hemmingsson" />
+        <meta property="og:type" content="devsecops devops sre drones hacking" />
+        <meta property="og:url" content="https://lifeadnshell.com" />
+        <meta property="og:description" content="Lifeandshell - Mattias Hemmingsson - SRE Devops - And more " />
+
+    <title>Mattias Hemmingsson {'rendered': 'Roll you own Docker Registry with nginx (In Docker)'} </title>
+    <!-- font icons -->
+    <link rel="stylesheet" href="/assets/vendors/themify-icons/css/themify-icons.css">
+    <!-- Bootstrap + Steller main styles -->
+	<link rel="stylesheet" href="/assets/css/steller.css">
+
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-3SYH00HY9X"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-3SYH00HY9X');
+</script>
+
+</head>
+<body data-spy="scroll" data-target=".navbar" data-offset="40" id="home">
+
+    <!-- Page navigation -->
+    <nav class="navbar navbar-expand-lg navbar-light fixed-top" data-spy="affix" data-offset-top="0">
+        <div class="container">
+            <a class="navbar-brand" href="#"><img src="/img/hrb.png" alt=""></a>
+            <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                <ul class="navbar-nav ml-auto align-items-center">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/blog">Blog</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Contact</a>
+                    </li>
+                </ul>
+            </div>
+        </div>          
+    </nav>
+    <!-- End of page navibation -->
+    <!-- Blog Section -->
+    <section id="blog" class="section">
+        <div class="container text-center">
+            <h6 class="subtitle"></h6>
+            <p class="mb-5 pb-4"></p>
+
+            <div class="row text-left">
+
+    <h2>Roll you own Docker Registry with nginx (In Docker)</h2>
+    <p><p>When yor private numbers of docker images grow is time to setup you own private repo.<br />
+Do have you own docker repo you need 1. the docker registry 2. nginx to handel users 3. tls so that all conenctions are encrypted.</p>
+<p>So here is what yu do to have you own docker repo running.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<ol>
+<li>Install docker-compsoe and setup the followin docker-compose file</li>
+</ol>
+<pre>storage: 
+ image: busybox 
+ volumes: 
+ - /backup/docker/registry:/var/lib/docker/registry 
+cache: 
+ image: redis 
+registry: 
+ image: registry 
+ ports: 
+ - 127.0.0.1:5000:5000 
+ links: 
+ - cache 
+ - storage 
+ volumes_from: 
+ - storage
+ environment: 
+ STANDALONE: true
+ SETTINGS_FLAVOR: local 
+ STORAGE_PATH: /var/lib/docker/registry 
+ SEARCH_BACKEND: sqlalchemy 
+ CACHE_REDIS_HOST: cache 
+ CACHE_REDIS_PORT: 6379 
+ CACHE_LRU_REDIS_HOST: cache 
+ CACHE_LRU_REDIS_PORT: 6379
+webb:
+ #image: mattiashem/nginx-registry
+ build: registry-front/
+ ports:
+ - 443:443
+ - 80:80
+ links:
+ - registry</pre>
+<p>&nbsp;</p>
+<p>create the folder registry-front in that folder we are going to add our users and our certs for the tls.<br />
+So create a Dockerfile and add the following</p>
+<p>&nbsp;</p>
+<pre>#Base docker file for lifeandshell.com
+FROM mattiashem/nginx-registry
+MAINTAINER "Mattias Hemmingsson" &lt;matte.hemmingsson@gmail.com&gt;
+
+EXPOSE 80
+EXPOSE 443
+
+ADD nginx.htpasswd /etc/nginx/nginx.htpasswd
+ADD cert.pem /etc/nginx/ssl/nginx.crt
+ADD privkey.pem /etc/nginx/ssl/nginx.key
+ADD fullchain.pem /etc/nginx/ssl/fullchain.pem
+
+CMD nginx -g "daemon off;"</pre>
+<p>The file I get from using letsencrypt that are free but you can  get from any source. Chnage so that the source files are mathcing with you certs.</p>
+<p>&nbsp;</p>
+<p>Now time for setting up some users create the file add_user.sh and add the followin content to it</p>
+<p>&nbsp;</p>
+<pre>docker run --rm --entrypoint htpasswd registry:2 -bn user1 password &gt; nginx.htpasswd
+docker run --rm --entrypoint htpasswd registry:2 -bn user2 password &gt;&gt; nginx.htpasswd
+docker run --rm --entrypoint htpasswd registry:2 -bn user3 password &gt;&gt; nginx.htpasswd
+docker run --rm --entrypoint htpasswd registry:2 -bn user4 password &gt;&gt; nginx.htpasswd</pre>
+<p>&nbsp;</p>
+<p>make the script x and run intt In the registry-front folder</p>
+<pre>chmod +x add_user.sh
+./add_user.sh</pre>
+<p>&nbsp;</p>
+<p>Now we are ready to start our registry do the the base filer with the docker-compose.yml and run</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<pre>docker-compose build</pre>
+<pre>docker-compose up</pre>
+<p>&nbsp;</p>
+<p>And now when everthing is wokring run</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<pre>docker-compose start</pre>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>And now you docker-registry should be up and running</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+</p>
+
+            </div>
+        </div>
+    </section>
+
+
+    <!-- Page Footer -->
+    <footer class="page-footer">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-sm-6">
+                    <p>Copyright <script>document.write(new Date().getFullYear())</script> &copy; <a href="http://hacking.robots.beer" target="_blank">Mattias Hemmingsson / h.r.b AB </a></p>
+                </div>
+                <div class="col-sm-6">
+                    <div class="socials">
+                        <a class="social-item" href="javascript:void(0)"><i class="ti-github"></i></a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </footer> 
+    <!-- End of page footer -->
+	
+	<!-- core  -->
+    <script src="/assets/vendors/jquery/jquery-3.4.1.js"></script>
+    <script src="/assets/vendors/bootstrap/bootstrap.bundle.js"></script>
+    <!-- bootstrap 3 affix -->
+	<script src="/assets/vendors/bootstrap/bootstrap.affix.js"></script>
+
+    <!-- steller js -->
+    <script src="/assets/js/steller.js"></script>
+
+</body>
+</html>

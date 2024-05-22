@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+    <link rel="icon" href="img/favicon.ico" type="image/png">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="description" content="Spent most of my days with a shell, deploys apps, writing code ore fixing problems with automating, This is some of the stuff a work on right now " />
+        <meta name="keywords" content="kubernernetes samma.io sre linux docker devops ks8 help blog fix problems" />
+        <meta property="og:title" content="Lifeandshell - Mattias Hemmingsson" />
+        <meta property="og:type" content="devsecops devops sre drones hacking" />
+        <meta property="og:url" content="https://lifeadnshell.com" />
+        <meta property="og:description" content="Lifeandshell - Mattias Hemmingsson - SRE Devops - And more " />
+
+    <title>Mattias Hemmingsson {'rendered': 'Install and setup Haystack search for Django'} </title>
+    <!-- font icons -->
+    <link rel="stylesheet" href="/assets/vendors/themify-icons/css/themify-icons.css">
+    <!-- Bootstrap + Steller main styles -->
+	<link rel="stylesheet" href="/assets/css/steller.css">
+
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-3SYH00HY9X"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-3SYH00HY9X');
+</script>
+
+</head>
+<body data-spy="scroll" data-target=".navbar" data-offset="40" id="home">
+
+    <!-- Page navigation -->
+    <nav class="navbar navbar-expand-lg navbar-light fixed-top" data-spy="affix" data-offset-top="0">
+        <div class="container">
+            <a class="navbar-brand" href="#"><img src="/img/hrb.png" alt=""></a>
+            <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                <ul class="navbar-nav ml-auto align-items-center">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/blog">Blog</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Contact</a>
+                    </li>
+                </ul>
+            </div>
+        </div>          
+    </nav>
+    <!-- End of page navibation -->
+    <!-- Blog Section -->
+    <section id="blog" class="section">
+        <div class="container text-center">
+            <h6 class="subtitle"></h6>
+            <p class="mb-5 pb-4"></p>
+
+            <div class="row text-left">
+
+    <h2>Install and setup Haystack search for Django</h2>
+    <p><p>So Mysql is crap at doing full text search. So in one of my projects i use Haystack so i can do full text searches.</p>
+<p>I have a running Django project up and this is how I setup haystack for my project.</p>
+<p>&nbsp;</p>
+<h2>Install and config</h2>
+<pre>sudo pip install django-haystack</pre>
+<p>&nbsp;</p>
+<p>in settings.py under INSTALLED_APPS add haystack</p>
+<pre>'haystack',</pre>
+<p>&nbsp;</p>
+<p>And also in settings.py file add some haystack settings</p>
+<pre>import os
+HAYSTACK_CONNECTIONS = {
+    'default': {
+        'ENGINE': 'haystack.backends.whoosh_backend.WhooshEngine',
+        'PATH': os.path.join(os.path.dirname(__file__), 'whoosh_index'),
+    },
+}</pre>
+<p>&nbsp;</p>
+<p>I have a model that looks like this</p>
+<pre>from django.db import models
+# Create your models here.
+class Register(models.Model):
+ name = models.CharField(max_length=255)
+ taxed = models.CharField(max_length=100)
+ kapital = models.CharField(max_length=100)
+ year = models.CharField(max_length=100)
+ location = models.CharField(max_length=100)</pre>
+<p>&nbsp;</p>
+<p>Then I have an search index that that matches my model</p>
+<pre>import datetime
+from haystack import indexes
+from search.models import Register</pre>
+<pre>class RegisterIndex(indexes.SearchIndex, indexes.Indexable):
+ text = indexes.CharField(document=True,model_attr='name')
+ taxed = indexes.CharField(model_attr='taxed')
+ kapital = indexes.CharField(model_attr='kapital')
+ location = indexes.CharField(model_attr='location')</pre>
+<pre>def get_model(self):
+ return Register</pre>
+<pre>def index_queryset(self, using=None):
+ """Used when the entire index for model is updated."""
+ return self.get_model().objects.all()</pre>
+<p>&nbsp;</p>
+<h2>Make it work</h2>
+<p>Sync up you database sett you mysql settings in settings.py and the run this command so that django can setup your database.</p>
+<pre>python manage.py syncd</pre>
+<p>Adding a lot of DATA to your tabel</p>
+<p>build you index</p>
+<pre>python manage.py rebuild_index</pre>
+<pre>WARNING: This will irreparably remove EVERYTHING from your search index in connection 'default'.
+Your choices after this are to restore from backups or rebuild via the `rebuild_index` command.
+Are you sure you wish to continue? [y/N] y
+Removing all documents from your index because you said so.
+All documents removed.
+Indexing 130 registers</pre>
+<p>&nbsp;</p>
+<p>And then when you want to update your index you run</p>
+<pre>python manage.py update_index</pre>
+<p>So the last thing is to setup some views so I can search fulltext. This is my functions and its a ajax request from my webbapp. And it returns the data</p>
+<p>&nbsp;</p>
+<pre>def ajaxsearch(request):
+ if request.method == 'POST':
+ search=request.POST['search']
+ location=request.POST['location']
+ search_answer = SearchQuerySet().filter(text=search).filter(town=location)
+ return render_to_response('test.html',{'search': search_answer},context_instance=RequestContext(request))</pre>
+<p>and here is the template that prints the data</p>
+<p>&nbsp;</p>
+<pre>
+{% for r in search %}
+ &lt;div class='alert alert-info'&gt;&lt;button type='button' class='close' data-dismiss='alert'&gt;&amp;times;&lt;/button&gt;&lt;strong&gt;{{ r.text }} {{ r.location }}&lt;/strong&gt; &lt;br&gt; &lt;b&gt;{{ r.taxed }}&lt;/b&gt;
+{% endfor %}</pre>
+</p>
+
+            </div>
+        </div>
+    </section>
+
+
+    <!-- Page Footer -->
+    <footer class="page-footer">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-sm-6">
+                    <p>Copyright <script>document.write(new Date().getFullYear())</script> &copy; <a href="http://hacking.robots.beer" target="_blank">Mattias Hemmingsson / h.r.b AB </a></p>
+                </div>
+                <div class="col-sm-6">
+                    <div class="socials">
+                        <a class="social-item" href="javascript:void(0)"><i class="ti-github"></i></a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </footer> 
+    <!-- End of page footer -->
+	
+	<!-- core  -->
+    <script src="/assets/vendors/jquery/jquery-3.4.1.js"></script>
+    <script src="/assets/vendors/bootstrap/bootstrap.bundle.js"></script>
+    <!-- bootstrap 3 affix -->
+	<script src="/assets/vendors/bootstrap/bootstrap.affix.js"></script>
+
+    <!-- steller js -->
+    <script src="/assets/js/steller.js"></script>
+
+</body>
+</html>

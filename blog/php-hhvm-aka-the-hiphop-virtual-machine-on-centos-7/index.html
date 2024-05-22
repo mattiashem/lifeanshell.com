@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+    <link rel="icon" href="img/favicon.ico" type="image/png">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="description" content="Spent most of my days with a shell, deploys apps, writing code ore fixing problems with automating, This is some of the stuff a work on right now " />
+        <meta name="keywords" content="kubernernetes samma.io sre linux docker devops ks8 help blog fix problems" />
+        <meta property="og:title" content="Lifeandshell - Mattias Hemmingsson" />
+        <meta property="og:type" content="devsecops devops sre drones hacking" />
+        <meta property="og:url" content="https://lifeadnshell.com" />
+        <meta property="og:description" content="Lifeandshell - Mattias Hemmingsson - SRE Devops - And more " />
+
+    <title>Mattias Hemmingsson {'rendered': 'Php HHVM (aka the HipHop Virtual Machine) on Centos 7'} </title>
+    <!-- font icons -->
+    <link rel="stylesheet" href="/assets/vendors/themify-icons/css/themify-icons.css">
+    <!-- Bootstrap + Steller main styles -->
+	<link rel="stylesheet" href="/assets/css/steller.css">
+
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-3SYH00HY9X"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-3SYH00HY9X');
+</script>
+
+</head>
+<body data-spy="scroll" data-target=".navbar" data-offset="40" id="home">
+
+    <!-- Page navigation -->
+    <nav class="navbar navbar-expand-lg navbar-light fixed-top" data-spy="affix" data-offset-top="0">
+        <div class="container">
+            <a class="navbar-brand" href="#"><img src="/img/hrb.png" alt=""></a>
+            <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                <ul class="navbar-nav ml-auto align-items-center">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/blog">Blog</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Contact</a>
+                    </li>
+                </ul>
+            </div>
+        </div>          
+    </nav>
+    <!-- End of page navibation -->
+    <!-- Blog Section -->
+    <section id="blog" class="section">
+        <div class="container text-center">
+            <h6 class="subtitle"></h6>
+            <p class="mb-5 pb-4"></p>
+
+            <div class="row text-left">
+
+    <h2>Php HHVM (aka the HipHop Virtual Machine) on Centos 7</h2>
+    <p><p>To get my php projects running as fast as possible om trying to use hhvm.<br />
+And here is my small guide how to install it on centos 7</p>
+<p>I used the docs from <a title="https://github.com/facebook/hhvm/wiki/Building-and-installing-hhvm-on-CentOS-7.x" href="https://github.com/facebook/hhvm/wiki/Building-and-installing-hhvm-on-CentOS-7.x" target="_blank">https://github.com/facebook/hhvm/wiki/Building-and-installing-hhvm-on-CentOS-7.x</a></p>
+<p>&nbsp;</p>
+<h3>1. First setup you centos linux host</h3>
+<p>&nbsp;</p>
+<pre>yum localinstall http://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-5.noarch.rpm
+yum localinstall http://rpms.famillecollet.com/enterprise/remi-release-7.rpm</pre>
+<pre>yum install cpp gcc-c++ cmake git psmisc {binutils,boost,jemalloc}-devel \
+{sqlite,tbb,bzip2,openldap,readline,elfutils-libelf,gmp,lz4,pcre}-devel \
+lib{xslt,event,yaml,vpx,png,zip,icu,mcrypt,memcached,cap,dwarf}-devel \
+{unixODBC,expat,mariadb}-devel lib{edit,curl,xml2,xslt}-devel \
+glog-devel oniguruma-devel inotify-tools-devel ocaml</pre>
+<pre>yum install ImageMagick-last<span class="pl-cce">\*</span> --enablerepo=remi</pre>
+<p>My box is a clean centos 7. If you have ImageMagic install already uninstall it.</p>
+<p>&nbsp;</p>
+<h3>2. Ok now we have the server ready lets get and build hhvm</h3>
+<p>&nbsp;</p>
+<pre>cd /opt
+git clone https://github.com/facebook/hhvm -b master  hhvm  --recursive
+cd hhvm</pre>
+<p>Time to build</p>
+<pre>cmake \
+-DLIBMAGICKWAND_INCLUDE_DIRS=<span class="pl-s1"><span class="pl-pds">"</span>/usr/include/ImageMagick-6<span class="pl-pds">"</span></span> \
+-DLIBMAGICKCORE_LIBRARIES=<span class="pl-s1"><span class="pl-pds">"</span>/usr/lib64/libMagickCore-6.Q16.so<span class="pl-pds">"</span></span> \
+-DLIBMAGICKWAND_LIBRARIES=<span class="pl-s1"><span class="pl-pds">"</span>/usr/lib64/libMagickWand-6.Q16.so<span class="pl-pds">"</span></span> <span class="pl-s3">.</span></pre>
+<pre>make -j<span class="pl-s1"><span class="pl-pds">$((</span>$(nproc)<span class="pl-k">+</span><span class="pl-c1">1</span><span class="pl-pds">))</span></span></pre>
+<p>&nbsp;</p>
+<pre>./hphp/hhvm/hhvm --version</pre>
+<pre>sudo make install</pre>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<h3>3. Config setup</h3>
+<p>&nbsp;</p>
+<p>First create some folders</p>
+<p>&nbsp;</p>
+<pre>mkdir /etc/hhvm
+mkdir /var/run/hhvm
+mkdir /var/log/hhvm
+mkdir /var/tmp/hhvm
+mkdir -p /usr/share/hhvm/hdf/
+chmod 775 /var/run/hhvm
+chmod 777 /var/tmp/hhvm
+
+</pre>
+<p>Now add some config files</p>
+<pre>vi /etc/hhvm/server.hdf</pre>
+<pre>PidFile = /var/run/hhvm/pid
+ 
+Server {
+ Port = 9000
+ SourceRoot = /var/www/
+ DefaultDocument = index.php
+}
+ 
+Log {
+ Level = Warning
+ AlwaysLogUnhandledExceptions = true
+ RuntimeErrorReportingLevel = 8191
+ UseLogFile = true
+ UseSyslog = false
+ File = /var/log/hhvm/error.log
+ Access {
+ * {
+ File = /var/log/hhvm/access.log
+ Format = %h %l %u % t \"%r\" %&gt;s %b
+ }
+ }
+}
+ 
+Repo {
+ Central {
+ Path = /var/tmp/hhvm/.hhvm.hhbc
+ }
+}
+ 
+#include "/usr/share/hhvm/hdf/static.mime-types.hdf"
+StaticFile {
+ FilesMatch {
+ * {
+ pattern = .*\.(dll|exe)
+ headers { 
+ * = Content-Disposition: attachment 
+ }
+ }
+ }
+ Extensions : StaticMimeTypes
+}
+ 
+MySQL {
+ TypedResults = false
+}
+
+</pre>
+<p>and the file</p>
+<pre>vi /usr/share/hhvm/hdf/static.mime-types.hdf</pre>
+<p>I added this file <a title="https://github.com/hhvm/packaging/blob/master/hhvm/rpm/fedora20/rpmbuild/SOURCES/static.mime-types.hdf" href="https://github.com/hhvm/packaging/blob/master/hhvm/rpm/fedora20/rpmbuild/SOURCES/static.mime-types.hdf" target="_blank">https://github.com/hhvm/packaging/blob/master/hhvm/rpm/fedora20/rpmbuild/SOURCES/static.mime-types.hdf</a></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>Adding the service</p>
+<pre>vi /usr/lib/systemd/system/hhvm.service</pre>
+<pre><span class="pl-en">[Unit]</span>
+<span class="pl-k">Description</span>=HHVM HipHop Virtual Machine (FCGI)
+
+<span class="pl-en">[Service]</span>
+<span class="pl-k">ExecStart</span>=/usr/local/bin/hhvm --config /etc/hhvm/server.hdf --user nobody --mode daemon -<span class="pl-k">vServer.Type</span>=fastcgi -<span class="pl-k">vServer.Port</span>=9000
+
+<span class="pl-en">[Install]</span>
+<span class="pl-k">WantedBy</span>=multi-user.target</pre>
+<p>Enable and start</p>
+<pre>systemctl <span class="pl-s3">enable</span> hhvm
+systemctl start hhvm
+systemctl status hhvm</pre>
+<p>Error if not started i had some trying with dirs and permissions test chmod 777 to the dirs and then when it works start tight the perms</p>
+<pre>tail /var/log/hhvm/error.log</pre>
+</p>
+
+            </div>
+        </div>
+    </section>
+
+
+    <!-- Page Footer -->
+    <footer class="page-footer">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-sm-6">
+                    <p>Copyright <script>document.write(new Date().getFullYear())</script> &copy; <a href="http://hacking.robots.beer" target="_blank">Mattias Hemmingsson / h.r.b AB </a></p>
+                </div>
+                <div class="col-sm-6">
+                    <div class="socials">
+                        <a class="social-item" href="javascript:void(0)"><i class="ti-github"></i></a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </footer> 
+    <!-- End of page footer -->
+	
+	<!-- core  -->
+    <script src="/assets/vendors/jquery/jquery-3.4.1.js"></script>
+    <script src="/assets/vendors/bootstrap/bootstrap.bundle.js"></script>
+    <!-- bootstrap 3 affix -->
+	<script src="/assets/vendors/bootstrap/bootstrap.affix.js"></script>
+
+    <!-- steller js -->
+    <script src="/assets/js/steller.js"></script>
+
+</body>
+</html>

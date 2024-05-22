@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+    <link rel="icon" href="img/favicon.ico" type="image/png">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="description" content="Spent most of my days with a shell, deploys apps, writing code ore fixing problems with automating, This is some of the stuff a work on right now " />
+        <meta name="keywords" content="kubernernetes samma.io sre linux docker devops ks8 help blog fix problems" />
+        <meta property="og:title" content="Lifeandshell - Mattias Hemmingsson" />
+        <meta property="og:type" content="devsecops devops sre drones hacking" />
+        <meta property="og:url" content="https://lifeadnshell.com" />
+        <meta property="og:description" content="Lifeandshell - Mattias Hemmingsson - SRE Devops - And more " />
+
+    <title>Mattias Hemmingsson {'rendered': 'Custom nagios plugins in python'} </title>
+    <!-- font icons -->
+    <link rel="stylesheet" href="/assets/vendors/themify-icons/css/themify-icons.css">
+    <!-- Bootstrap + Steller main styles -->
+	<link rel="stylesheet" href="/assets/css/steller.css">
+
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-3SYH00HY9X"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-3SYH00HY9X');
+</script>
+
+</head>
+<body data-spy="scroll" data-target=".navbar" data-offset="40" id="home">
+
+    <!-- Page navigation -->
+    <nav class="navbar navbar-expand-lg navbar-light fixed-top" data-spy="affix" data-offset-top="0">
+        <div class="container">
+            <a class="navbar-brand" href="#"><img src="/img/hrb.png" alt=""></a>
+            <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                <ul class="navbar-nav ml-auto align-items-center">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/blog">Blog</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Contact</a>
+                    </li>
+                </ul>
+            </div>
+        </div>          
+    </nav>
+    <!-- End of page navibation -->
+    <!-- Blog Section -->
+    <section id="blog" class="section">
+        <div class="container text-center">
+            <h6 class="subtitle"></h6>
+            <p class="mb-5 pb-4"></p>
+
+            <div class="row text-left">
+
+    <h2>Custom nagios plugins in python</h2>
+    <p><p>For monitoring different service and function you may need to build some custom monitoring plugins. I have some build for nrpe and will work with both nagios and icinga.<br />
+This script will do and <strong>mysql</strong> check and then send the data back and also start graphing the data back if you use <strong>pnp4nagios</strong> 🙂</p>
+<p>Every plugin must have <strong>two</strong> things.</p>
+<h3>1. an exit code thet will say the state of the plugin (OK.Critical,warning) &lt;- this will generate the alerts</h3>
+<ul>
+<li>1 = ok</li>
+<li>2= Critical</li>
+<li>3=Warnings</li>
+<li>4= unknown</li>
+</ul>
+<p>&nbsp;</p>
+<h3>2. Some text to abaout the plugin saying for exampel disk space.</h3>
+<p>&nbsp;</p>
+<p>Here below is my small script that will de some db qestions ans return the result to nagios. If the values return is under 0 then it will exit in state 2 and then nagios will alert.</p>
+<p>&nbsp;</p>
+<pre>#!/usr/bin/env python
+#Mysql stats
+#Get stats from mysql server
+#then prints the stats to icinga to process</pre>
+<pre>import MySQLdb
+from datetime import date, timedelta
+import datetime
+import sys</pre>
+<pre>'''
+MYSQL
+'''
+mysqlhost="localhost"
+mysqluser="monitor"
+mysqlpass="XXXXXXX"
+mysqldb="db"</pre>
+<pre>
+def mysql_query(sql):
+ '''
+ run an mysql mysql_query
+ '''
+ try:
+ con = None
+ con = MySQLdb.Connection(mysqlhost, mysqluser,
+ mysqlpass, mysqldb)
+ curs = con.cursor()
+ curs.execute(sql)
+ con.commit()
+ back=[]
+ for value in curs:
+ back.append(value[0])
+ return back</pre>
+<pre>
+ except MySQLdb.Error, e:
+ print "Error in MYSQL {0} : {1}".format(e.args[0], e.args[1])
+ sys.exit(1)
+ finally:
+ if con:
+ con.close()</pre>
+<pre></pre>
+<pre>
+#mysql to run on the mysql server
+qery="""SELEC your own super mysql qery and the group by"""
+
+#Send mysql to server
+back =mysql_query(qery)
+
+#Testing result and building string back to nagios
+if back[0] &lt;= 30:
+ print "CRITICAL | 'value'="+str(back[0])+" 'value'="+str(back[1])
+ sys.exit(2)
+else:
+ print "OK: | 'value'="+str(back[0])+" 'value'="+str(back[1])
+ sys.exit(0)</pre>
+</p>
+
+            </div>
+        </div>
+    </section>
+
+
+    <!-- Page Footer -->
+    <footer class="page-footer">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-sm-6">
+                    <p>Copyright <script>document.write(new Date().getFullYear())</script> &copy; <a href="http://hacking.robots.beer" target="_blank">Mattias Hemmingsson / h.r.b AB </a></p>
+                </div>
+                <div class="col-sm-6">
+                    <div class="socials">
+                        <a class="social-item" href="javascript:void(0)"><i class="ti-github"></i></a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </footer> 
+    <!-- End of page footer -->
+	
+	<!-- core  -->
+    <script src="/assets/vendors/jquery/jquery-3.4.1.js"></script>
+    <script src="/assets/vendors/bootstrap/bootstrap.bundle.js"></script>
+    <!-- bootstrap 3 affix -->
+	<script src="/assets/vendors/bootstrap/bootstrap.affix.js"></script>
+
+    <!-- steller js -->
+    <script src="/assets/js/steller.js"></script>
+
+</body>
+</html>
